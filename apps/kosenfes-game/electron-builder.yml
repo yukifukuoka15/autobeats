@@ -1,0 +1,41 @@
+appId: jp.kosenfes2026.kosenfes-game
+productName: Kosenfes Game
+directories:
+  output: release
+  buildResources: resources
+files:
+  - out/**
+  - package.json
+extraMetadata:
+  main: out/main/index.js
+npmRebuild: false
+nodeGypRebuild: false
+# 署名なし（配布時に Apple Developer ID / Windows コード署名を追加する）
+mac:
+  category: public.app-category.games
+  target:
+    - target: dmg
+    - target: zip
+  identity: null
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  extendInfo:
+    NSMicrophoneUsageDescription: このアプリはマイクを使用しません。
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: portable
+      arch:
+        - x64
+nsis:
+  artifactName: ${productName}-${version}-win-${arch}-setup.${ext}
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: false
+  shortcutName: Kosenfes Game
+portable:
+  artifactName: ${productName}-${version}-win-${arch}-portable.${ext}
+artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+publish: null

@@ -1,0 +1,73 @@
+{
+  "name": "autobeats",
+  "private": true,
+  "version": "1.0.1",
+  "description": "高専祭2026 向け オフライン楽曲解析・4難易度譜面エディターとネオンヒット連携",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev:editor": "npm run dev -w apps/chart-editor",
+    "dev:game": "npm run dev -w apps/kosenfes-game",
+    "build": "npm run build --workspaces --if-present",
+    "build:packages": "npm run build -w packages/chart-format -w packages/audio-analysis",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:unit": "vitest run --project chart-format --project audio-analysis --project chart-editor --project kosenfes-game",
+    "test:integration": "vitest run --project integration",
+    "test:e2e": "npm run test:e2e --workspaces --if-present",
+    "test:e2e:editor": "npm run test:e2e -w apps/chart-editor",
+    "test:e2e:game": "npm run test:e2e -w apps/kosenfes-game",
+    "package:mac": "npm run package:mac --workspaces --if-present",
+    "package:mac:editor": "npm run package:mac -w apps/chart-editor",
+    "package:mac:game": "npm run package:mac:dir -w apps/kosenfes-game",
+    "fixtures": "tsx scripts/generate-fixtures.ts",
+    "package:win": "npm run package:win --workspaces --if-present",
+    "package:win:editor": "npm run package:win -w apps/chart-editor",
+    "package:win:game": "npm run package:win -w apps/kosenfes-game",
+    "release:mac": "npm run package:mac --workspaces --if-present",
+    "prepare:youtube": "node scripts/prepare-youtube-runtime.mjs"
+  },
+  "devDependencies": {
+    "@breezystack/lamejs": "^1.2.7",
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.64.1",
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.2.1",
+    "electron": "39.8.10",
+    "electron-builder": "^26.18.0",
+    "electron-vite": "^6.0.0",
+    "eslint": "^10.14.0",
+    "eslint-plugin-react-hooks": "^7.0.0",
+    "globals": "^17.14.0",
+    "playwright": "^1.64.1",
+    "tsx": "^4.23.15",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.72.1",
+    "vite": "^8.3.5",
+    "vitest": "^5.1.0"
+  },
+  "dependencies": {
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "zod": "^4.6.7"
+  },
+  "allowScripts": {
+    "electron@39.8.10": true,
+    "electron-winstaller@5.4.0": true,
+    "fsevents@2.3.3": true
+  },
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yukifukuoka15/autobeats.git"
+  },
+  "license": "MIT"
+}

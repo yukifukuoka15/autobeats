@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node", "vitest/globals"],
+    "noEmit": true,
+    "paths": {
+      "@main/*": ["./src/main/*"],
+      "@renderer/*": ["./src/renderer/src/*"]
+    }
+  },
+  "include": ["src", "test", "test/helpers", "electron.vite.config.ts", "playwright.config.ts", "electron-builder.yml"]
+}

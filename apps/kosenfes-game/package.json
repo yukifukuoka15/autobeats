@@ -1,0 +1,24 @@
+{
+  "name": "@autobeats/kosenfes-game",
+  "version": "1.0.1",
+  "private": true,
+  "description": "高専祭ゲームアプリ（ネオンヒット：固定譜面モード／楽曲譜面モード）",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test:e2e": "npm run build && playwright test -c playwright.config.ts",
+    "package:mac": "electron-vite build && electron-builder --mac --config electron-builder.yml",
+    "package:win": "electron-vite build && electron-builder --win --config electron-builder.yml",
+    "package:mac:dir": "electron-vite build && electron-builder --mac dir --config electron-builder.yml"
+  },
+  "dependencies": {
+    "@autobeats/chart-format": "1.0.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "zod": "^4.6.7"
+  },
+  "author": "kosenfes2026"
+}

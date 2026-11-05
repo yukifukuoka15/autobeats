@@ -1,0 +1,25 @@
+{
+  "name": "@autobeats/chart-editor",
+  "version": "1.0.1",
+  "private": true,
+  "description": "AutoBeats 譜面エディター（オフライン楽曲解析・4難易度譜面編集）",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test:e2e": "npm run build && playwright test -c playwright.config.ts",
+    "package:mac": "node ../../scripts/prepare-youtube-runtime.mjs && electron-vite build && electron-builder --mac --config electron-builder.yml",
+    "package:win": "node ../../scripts/prepare-youtube-runtime.mjs && electron-vite build && electron-builder --win --config electron-builder.yml",
+    "package:mac:dir": "node ../../scripts/prepare-youtube-runtime.mjs && electron-vite build && electron-builder --mac dir --config electron-builder.yml"
+  },
+  "dependencies": {
+    "@autobeats/audio-analysis": "1.0.0",
+    "@autobeats/chart-format": "1.0.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "zod": "^4.6.7"
+  },
+  "author": "kosenfes2026"
+}
