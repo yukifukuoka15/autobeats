@@ -1,0 +1,149 @@
+name: Import and publish AutoBeats 1.0.1
+on:
+  push:
+    paths: ['.github/workflows/publish-1.0.1.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply verified integrated sources
+        env:
+          TARGET_REPOSITORY: ${{ github.repository }}
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, zipfile, hashlib
+          root = pathlib.Path.cwd()
+          archive_path = root / 'autobeats-youtube-1.0.1-source.zip'
+          assert hashlib.sha256(archive_path.read_bytes()).hexdigest() == '5ac871fdc9c16bc9ee24f7a6a2f41860de9424b05897cc3f273718ee6abfc0c7'
+          with zipfile.ZipFile(archive_path) as archive:
+              for item in archive.infolist():
+                  parts = pathlib.PurePosixPath(item.filename).parts[1:]
+                  if not parts or parts[0] in ('.github', 'tools') or any(p in ('out', 'release', 'node_modules', '__pycache__') for p in parts):
+                      continue
+                  target = root.joinpath(*parts).resolve()
+                  if not target.is_relative_to(root):
+                      raise ValueError('Invalid archive path')
+                  target.parent.mkdir(parents=True, exist_ok=True)
+                  target.write_bytes(archive.read(item))
+                  if item.filename.endswith('.command'):
+                      target.chmod(0o755)
+          for name in ('start_mac.command', 'build_mac.command'):
+              p = root / name
+              p.write_text(p.read_text().replace('node tools/npm/bin/npm-cli.js', 'npm').replace('chmod +x tools/bin/npm\n', ''))
+          repo = os.environ['TARGET_REPOSITORY']
+          for name in ('README.md', 'package.json'):
+              p = root / name
+              p.write_text(p.read_text().replace('kzt-fuku/autobeats', repo))
+          p = root / 'README.md'
+          text = p.read_text().replace('Windows上ではMac用ソース・設定のみを更新しています。', 'GitHub ActionsでApple Silicon・Intel用DMGとZIPを生成します。')
+          p.write_text(text)
+          PY
+      - name: Commit sources and tag
+        id: source
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A -- . ':!tools'
+          git diff --cached --quiet || git commit -m 'Publish integrated AutoBeats 1.0.1 sources'
+          git push origin HEAD:main
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          if ! git ls-remote --exit-code --tags origin refs/tags/v1.0.1 >/dev/null; then
+            git tag v1.0.1
+            git push origin refs/tags/v1.0.1
+          fi
+  build:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            script: release:mac
+          - os: macos-15-intel
+            script: release:mac
+          - os: windows-latest
+            script: package:win
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: npm ci
+      - run: npm run ${{ matrix.script }}
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.os }}
+          compression-level: 0
+          path: |
+            apps/*/release/*.dmg
+            apps/*/release/*.zip
+            apps/*/release/*.exe
+          if-no-files-found: error
+  release:
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: Add source archive and checksums
+        run: |
+          python3 - <<'PY'
+          import pathlib, shutil, hashlib
+          out = pathlib.Path('dist/extra')
+          out.mkdir(parents=True, exist_ok=True)
+          shutil.copy2('autobeats-youtube-1.0.1-source.zip', out)
+          shutil.copy2('README-MAC.txt', out)
+          lines = []
+          for p in sorted(pathlib.Path('dist').rglob('*')):
+              if p.is_file() and p.suffix in ('.dmg', '.zip', '.exe'):
+                  with p.open('rb') as f:
+                      digest = hashlib.file_digest(f, 'sha256').hexdigest()
+                  name = p.name.replace(' ', '.')
+                  if name != p.name:
+                      p.rename(p.with_name(name))
+                  lines.append(f'{digest}  {name}')
+          (out / 'SHA256SUMS-v1.0.1.txt').write_text('\n'.join(lines) + '\n')
+          PY
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.1
+          target_commitish: ${{ needs.prepare.outputs.sha }}
+          name: v1.0.1 — YouTubeリンク取り込み対応
+          body: |
+            YouTubeリンクから音声取得・MP3変換・ライブラリ保存・波形表示まで自動で進む統合版です。
+
+            - 波形生成用Workerの起動設定を修正
+            - Windows・Mac配布版エディターにPython・yt-dlp・FFmpeg・Denoを同梱（追加導入不要）
+            - Apple Silicon・IntelそれぞれのmacOSランナーでDMG・ZIPを生成
+            - Windowsはsetup.exeまたはportable.exeを選択
+            - Mac（M1以降）はmac-arm64.dmg、Intel Macはmac-x64.dmgを選択
+            - 譜面エディターはAutoBeats.Chart.Editor、ゲーム本体はKosenfes.Game
+
+            MacはDMGを開きApplicationsへコピーしてください。ZIP版もあります。
+            Mac実機での手動操作確認は未実施で、署名・公証は未設定です。
+            使い方はREADME-MAC.txt、ハッシュはSHA256SUMS-v1.0.1.txtを参照してください。
+          files: |
+            dist/**/*.dmg
+            dist/**/*.zip
+            dist/**/*.exe
+            dist/extra/*.txt
+          fail_on_unmatched_files: true
