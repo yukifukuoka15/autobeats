@@ -1,6 +1,7 @@
 import { AUDIO_LIMITS, normalizeChoruses } from '@autobeats/chart-format';
 import { median } from './dsp/filters';
 import { mixToMono, resampleLinear } from './dsp/resample';
+import { stabilizeBeatGrid } from './features/stableGrid';
 import { trackBeats } from './features/beats';
 import { estimateDownbeats } from './features/downbeat';
 import { ANALYSIS_SAMPLE_RATE, FRAME_SIZE, extractFrameFeatures } from './features/frames';
@@ -155,7 +156,7 @@ export async function analyzeAudio(input: AnalysisInput, control: AnalysisContro
   // 無音区間の拍を除外
   beatFrames = beatFrames.filter((f) => f >= leadIn - 1 && f <= tail);
   // 拍位置をオンセット包絡の放物線補間で小数フレーム精度にする
-  const refinedFrames = beatFrames.map((f) => refineBeatFrame(env.envelope, f));
+  let refinedFrames = beatFrames.map((f) => refineBeatFrame(env.envelope, f));
   let bpm = tempo.bpm;
   if (refinedFrames.length >= 4) {
     const ibis: number[] = [];
@@ -167,6 +168,16 @@ export async function analyzeAudio(input: AnalysisInput, control: AnalysisContro
       const reg = regressionBpm(refinedFrames.map((f) => f * features.hopMs));
       bpm = reg !== null && Math.abs(reg - medBpm) / medBpm < 0.03 ? reg : medBpm;
     }
+  }
+  const gridWeights = refinedFrames.map((f) => {
+    const i = Math.max(0, Math.min(features.frameCount - 1, Math.round(f)));
+    return Math.max(0, features.rms[i]! / rmsMax - 0.15) ** 2;
+  });
+  const stableGrid = stabilizeBeatGrid(refinedFrames.map((f) => f * features.hopMs), gridWeights, bpm);
+  if (stableGrid) {
+    refinedFrames = stableGrid.timesMs.map((t) => t / features.hopMs);
+    beatFrames = refinedFrames.map(Math.round);
+    bpm = stableGrid.bpm;
   }
   const beats = refinedFrames.map((f) => Math.max(0, Math.round(f * features.hopMs + ONSET_LATENCY_COMPENSATION_MS)));
   const down = estimateDownbeats(beatFrames, features, env.envelope);

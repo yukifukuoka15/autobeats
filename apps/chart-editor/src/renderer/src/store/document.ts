@@ -36,7 +36,7 @@ export function createEmptyDocument(noteMode: EditorDocument['noteMode'] = 'addi
   const levelSettings = {} as EditorDocument['levelSettings'];
   for (const k of LEVEL_KEYS) {
     levels[k] = { displayName: LEVEL_DISPLAY_NAMES[levelNumber(k)], notes: [] };
-    levelSettings[k] = { ...DEFAULT_LEVEL_SETTINGS[levelNumber(k)], ...(noteMode === 'additive' && k === '2' ? { density: 0.65 } : {}), ...(noteMode === 'additive' && k === '3' ? { density: 0.9 } : {}) };
+    levelSettings[k] = { ...DEFAULT_LEVEL_SETTINGS[levelNumber(k)], ...(noteMode === 'additive' && k === '1' ? { minGapMs: 300 } : {}), ...(noteMode === 'additive' && k === '2' ? { density: 0.65 } : {}), ...(noteMode === 'additive' && k === '3' ? { density: 0.9 } : {}) };
   }
   return { noteMode, title: '', artist: '', trackId: 'track', audio: null, analysis: null, bpm: 120, offsetMs: 0, choruses: [], levels, levelSettings };
 }
@@ -324,7 +324,7 @@ function regenerateAdditions(doc: EditorDocument, requested: readonly LevelKey[]
   if (!sourceAnalysis) return { doc, reports: [], shortfalls: [] };
   if (doc.levels['1'].notes.length === 0) {
     const usedTimes = EDITOR_LEVEL_KEYS.filter((k) => k !== '1').flatMap((k) => doc.levels[k].notes.map((n) => ({ level: levelNumber(k), hitAtMs: n.hitAtMs, id: n.id, durationMs: n.type === 'mash' ? n.durationMs : undefined })));
-    const base = generateLevelDetailed(1, { analysis: sourceAnalysis, choruses: doc.choruses, durationMs: durationOf(doc), settings: { 1: { ...doc.levelSettings['1'], minGapMs: Math.max(81, doc.levelSettings['1'].minGapMs) } }, usedTimes, crossLevelExclusionMs: CROSS_LEVEL_EXCLUSION_MS });
+    const base = generateLevelDetailed(1, { analysis: sourceAnalysis, choruses: doc.choruses, durationMs: durationOf(doc), musicalPhrasing: true, settings: { 1: { ...doc.levelSettings['1'], minGapMs: Math.max(81, doc.levelSettings['1'].minGapMs) } }, usedTimes, crossLevelExclusionMs: CROSS_LEVEL_EXCLUSION_MS });
     doc = updateLevel(doc, '1', base.notes);
     if (base.notes.length === 0) return { doc, reports: [base], shortfalls: ['Lv1の生成候補がありません。音源や解析結果を確認してください。'] };
   }
@@ -342,7 +342,7 @@ function regenerateAdditions(doc: EditorDocument, requested: readonly LevelKey[]
     const first = lowerTimes[0]!;
     const last = Math.max(...lower.map(noteEndMs));
     const analysis = { ...sourceAnalysis, leadInEndMs: Math.max(sourceAnalysis.leadInEndMs, first), tailStartMs: Math.min(sourceAnalysis.tailStartMs, last + 1) };
-    const r = generateLevelDetailed(level, { analysis, choruses: doc.choruses, durationMs: durationOf(doc), settings: { [level]: { ...doc.levelSettings[key], minGapMs: Math.max(81, doc.levelSettings[key].minGapMs) } }, existing: { [level]: next.levels[key].notes }, manualPolicy: 'keep', usedTimes, crossLevelExclusionMs: CROSS_LEVEL_EXCLUSION_MS });
+    const r = generateLevelDetailed(level, { analysis, cumulativeBase: lower, musicalPhrasing: true, choruses: doc.choruses, durationMs: durationOf(doc), settings: { [level]: { ...doc.levelSettings[key], minGapMs: Math.max(81, doc.levelSettings[key].minGapMs) } }, existing: { [level]: next.levels[key].notes }, manualPolicy: 'keep', usedTimes, crossLevelExclusionMs: CROSS_LEVEL_EXCLUSION_MS });
     next = updateLevel(next, key, r.notes);
     reports.push(r);
     if (r.generatedCount === 0) shortfalls.push(`Lv${key}の追加候補はありません。下位譜面の間隔や密度設定を確認してください。`);

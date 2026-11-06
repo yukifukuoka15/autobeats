@@ -16,7 +16,7 @@ import {
 } from '@autobeats/chart-format';
 import type { AnalysisResult } from './types';
 
-export type GenerationAnalysis = Pick<AnalysisResult, 'beats' | 'downbeats' | 'onsets' | 'leadInEndMs' | 'tailStartMs' | 'bpm' | 'beatsPerBar'>;
+export type GenerationAnalysis = Pick<AnalysisResult, 'beats' | 'downbeats' | 'onsets' | 'leadInEndMs' | 'tailStartMs' | 'bpm' | 'beatsPerBar'> & Partial<Pick<AnalysisResult, 'energyCurve' | 'energyCurveStepMs'>>;
 
 export type ManualNotePolicy = 'keep' | 'replace';
 
@@ -35,6 +35,9 @@ export interface GenerationInput {
   usedTimes?: readonly UsedNoteTime[];
   /** 難易度間除外幅（ms）。既定は CROSS_LEVEL_EXCLUSION_MS */
   crossLevelExclusionMs?: number;
+  /** 追加譜面: 下位レベルも小節密度に数え、静かな区間では休む。 */
+  cumulativeBase?: readonly ChartNote[];
+  musicalPhrasing?: boolean;
 }
 
 export interface LevelGenerationResult {
@@ -179,6 +182,13 @@ export function generateLevel(level: LevelNumber, input: GenerationInput): Chart
 export function generateLevelDetailed(level: LevelNumber, input: GenerationInput): LevelGenerationResult {
   const settings = input.settings?.[level] ?? DEFAULT_LEVEL_SETTINGS[level];
   const profile = LEVEL_PROFILES[level];
+  const cumulative = input.cumulativeBase ?? [];
+  const energies = input.analysis.energyCurve;
+  const energyStep = input.analysis.energyCurveStepMs ?? 0;
+  const sortedEnergy = energies ? [...energies].sort((a, b) => a - b) : [];
+  const referenceEnergy = sortedEnergy[Math.floor(sortedEnergy.length * 0.8)] ?? 0;
+  const energyAt = (t: number): number => energies && energyStep > 0 ? (energies[Math.min(energies.length - 1, Math.max(0, Math.round(t / energyStep)))] ?? 0) : 1;
+  const quiet = (t: number): boolean => !!(input.musicalPhrasing && energies?.length && referenceEnergy > 0 && energyAt(t) < referenceEnergy * 0.22);
   const policy = input.manualPolicy ?? 'keep';
   const existing = input.existing?.[level] ?? [];
   const kept: ChartNote[] = policy === 'keep' ? existing.filter((n) => n.source === 'manual').map((n) => ({ ...n })) : [];
@@ -195,15 +205,22 @@ export function generateLevelDetailed(level: LevelNumber, input: GenerationInput
   const usedOther = (input.usedTimes ?? []).filter((u) => u.level !== level);
 
   const candidates = buildCandidates(input.analysis, settings.beatSnapStrength).filter(
-    (c) => c.timeMs >= start && c.timeMs < end && c.timeMs >= 0 && c.timeMs < durationMs,
+    (c) => c.timeMs >= start && c.timeMs < end && c.timeMs >= 0 && c.timeMs < durationMs && !quiet(c.timeMs),
   );
 
   // スコア降順で貪欲に採用（同点は早い時刻）。衝突した候補は捨て、次点の候補が自然に採用される。
   // 閾値未満の候補は「他レベルとの重複で目標数に届かないとき」だけ、下限スコア以上の音楽的候補を次点として採用する。
+  const firstDownbeatIndex = nearestIndex(input.analysis.beats, input.analysis.downbeats[0] ?? 0);
   const ranked = candidates
     .map((c) => {
       const chorus = isInChorus(input.choruses, c.timeMs);
-      return { c, chorus, effectiveThreshold: chorus ? threshold / chorusMul : threshold };
+      const beatIndex = nearestIndex(input.analysis.beats, c.timeMs);
+      const barSize = input.analysis.beatsPerBar || 4;
+      const slot = ((beatIndex - firstDownbeatIndex) % barSize + barSize) % barSize;
+      const nearBeat = beatIndex >= 0 && Math.abs(input.analysis.beats[beatIndex]! - c.timeMs) <= 80;
+      const easyWeight = !nearBeat ? 0.55 : slot === 0 ? 1.35 : slot === Math.floor(barSize / 2) ? 1.1 : slot === barSize - 1 ? 0.65 : 0.9;
+      const rankedCandidate = input.musicalPhrasing && level === 1 ? { ...c, score: c.score * easyWeight } : c;
+      return { c: rankedCandidate, chorus, effectiveThreshold: chorus && !(input.musicalPhrasing && level === 1) ? threshold / chorusMul : threshold };
     })
     .filter((x) => profile.reasons.has(x.c.reason) || (x.chorus && profile.chorusReasons.has(x.c.reason)))
     .sort((a, b) => b.c.score - a.c.score || a.c.timeMs - b.c.timeMs);
@@ -211,7 +228,7 @@ export function generateLevelDetailed(level: LevelNumber, input: GenerationInput
   const select = (withExclusion: boolean, fillTarget: number): { generated: ChartNote[]; excluded: number } => {
     const accepted: number[] = kept.map((n) => n.hitAtMs).sort((a, b) => a - b);
     const barCounts = new Map<number, number>();
-    for (const t of accepted) barCounts.set(barOf(t), (barCounts.get(barOf(t)) ?? 0) + 1);
+    for (const t of [...accepted, ...cumulative.map((n) => n.hitAtMs)]) barCounts.set(barOf(t), (barCounts.get(barOf(t)) ?? 0) + 1);
     const generated: ChartNote[] = [];
     let excluded = 0;
     for (const { c, chorus, effectiveThreshold } of ranked) {
@@ -222,7 +239,9 @@ export function generateLevelDetailed(level: LevelNumber, input: GenerationInput
       if (!gapOk(accepted, c.timeMs, minGap)) continue;
       if (blockedSpans.some((sp) => c.timeMs >= sp.start - minGap && c.timeMs <= sp.end + minGap)) continue;
       const bar = barOf(c.timeMs);
-      const cap = chorus ? Math.ceil(profile.maxPerBar * chorusMul) : profile.maxPerBar;
+      const baseCap = input.musicalPhrasing ? ({ 1: 2, 2: 2, 3: 3, 4: 6 } as const)[level] : profile.maxPerBar;
+      // サビでも密度を無制限に増やさない。追加数ではなく統合後の総数を制限する。
+      const cap = chorus && !(input.musicalPhrasing && level === 1) ? Math.ceil(baseCap * (input.musicalPhrasing ? Math.min(1.25, chorusMul) : chorusMul)) : baseCap;
       const count = barCounts.get(bar) ?? 0;
       if (count >= cap) continue;
       if (withExclusion && usedOther.length > 0 && conflictsWithOtherLevel(c.timeMs, level, usedOther, exclusionMs)) {

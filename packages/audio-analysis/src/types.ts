@@ -1,7 +1,7 @@
 import type { ChorusSection } from '@autobeats/chart-format';
 
 /** 解析エンジンのバージョン。結果の互換性が変わるときに上げる。キャッシュキーにも使用する。 */
-export const ANALYSIS_ENGINE_VERSION = '1.0.0';
+export const ANALYSIS_ENGINE_VERSION = '1.1.0';
 
 export interface AnalysisInput {
   sampleRate: number;
