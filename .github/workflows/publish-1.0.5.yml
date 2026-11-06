@@ -1,0 +1,153 @@
+name: Import and publish AutoBeats 1.0.5
+on:
+  push:
+    paths: ['.github/workflows/publish-1.0.5.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply verified integrated sources
+        env:
+          TARGET_REPOSITORY: ${{ github.repository }}
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, zipfile, hashlib
+          root = pathlib.Path.cwd()
+          archive_path = root / 'autobeats-update-1.0.5.zip'
+          assert hashlib.sha256(archive_path.read_bytes()).hexdigest() == 'f8d9b350ad220d98234287e289b083a077ec2a0345d0328bfca529f0489d1b57'
+          with zipfile.ZipFile(archive_path) as archive:
+              for item in archive.infolist():
+                  parts = pathlib.PurePosixPath(item.filename).parts[1:]
+                  if not parts or parts[0] in ('.github', 'tools') or any(p in ('out', 'release', 'node_modules', '__pycache__') for p in parts):
+                      continue
+                  target = root.joinpath(*parts).resolve()
+                  if not target.is_relative_to(root):
+                      raise ValueError('Invalid archive path')
+                  target.parent.mkdir(parents=True, exist_ok=True)
+                  target.write_bytes(archive.read(item))
+                  if item.filename.endswith('.command'):
+                      target.chmod(0o755)
+          PY
+      - name: Commit sources and tag
+        id: source
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A -- . ':!tools'
+          git diff --cached --quiet || git commit -m 'Publish integrated AutoBeats 1.0.5 sources'
+          git push origin HEAD:main
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          if ! git ls-remote --exit-code --tags origin refs/tags/v1.0.5 >/dev/null; then
+            git tag v1.0.5
+            git push origin refs/tags/v1.0.5
+          fi
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      - run: npm run fixtures
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npx vitest run
+  build:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            script: release:mac
+          - os: macos-15-intel
+            script: release:mac
+          - os: windows-latest
+            script: package:win
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: npm ci
+      - run: npm run ${{ matrix.script }}
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.os }}
+          compression-level: 0
+          path: |
+            apps/*/release/*.dmg
+            apps/*/release/*.zip
+            apps/*/release/*.exe
+          if-no-files-found: error
+  release:
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: Add source archive and checksums
+        run: |
+          python3 - <<'PY'
+          import pathlib, shutil, hashlib
+          out = pathlib.Path('dist/extra')
+          out.mkdir(parents=True, exist_ok=True)
+          shutil.copy2('README-MAC.txt', out)
+          lines = []
+          for p in sorted(pathlib.Path('dist').rglob('*')):
+              if p.is_file() and p.suffix in ('.dmg', '.zip', '.exe'):
+                  with p.open('rb') as f:
+                      digest = hashlib.file_digest(f, 'sha256').hexdigest()
+                  name = p.name.replace(' ', '.')
+                  if name != p.name:
+                      p.rename(p.with_name(name))
+                  lines.append(f'{digest}  {name}')
+          (out / 'SHA256SUMS-v1.0.5.txt').write_text('\n'.join(lines) + '\n')
+          PY
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.5
+          target_commitish: ${{ needs.prepare.outputs.sha }}
+          name: v1.0.5 — やさしい譜面生成とLv4空欄の書き出し
+          body: |
+            やさしい譜面の作り直しと、Lv4空欄の書き出し表示に対応しました。
+
+            - Lv4は空のまま書き出し可能。不要なLv4空欄の警告を削除
+            - 書き出し成功を明確に表示
+            - 「やさしく作り直す…」を追加。旧独立譜面を追加分方式へ変更して再生成可能
+            - 新規追加譜面の初期密度を下げ、生成間隔を拡大
+            - 下位レベルに対しても生成間隔を確保
+            - Lv1の自動生成分を作り直す選択肢を追加。手作業の打点は初期設定で保持
+            - 通常の追加分生成は既存Lv1を保持。80ms以内の重複は引き続き検証
+
+            既存譜面はAI自動解析後に「やさしく作り直す…」を使ってください。
+            詳細: docs/EASY_GENERATION.md
+            Windows: win-x64-setup.exe または portable.exe
+            Mac M1以降: mac-arm64.dmg / Intel Mac: mac-x64.dmg
+            譜面編集はAutoBeats.Chart.Editorを選択してください。
+            Mac実機での手動操作確認は未実施、署名・公証は未設定です。
+          files: |
+            dist/**/*.dmg
+            dist/**/*.zip
+            dist/**/*.exe
+            dist/extra/*.txt
+          fail_on_unmatched_files: true
