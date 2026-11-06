@@ -662,7 +662,7 @@ class Controller {
     const doc = editorStore.doc;
     const levels = { ...doc.levels };
     for (const k of LEVEL_KEYS) levels[k] = { displayName: chart.levels[k].displayName, notes: chart.levels[k].notes.map((n) => ({ ...n })) };
-    editorStore.commitDoc({ ...doc, choruses: chart.choruses.map((c) => ({ ...c })), levels, bpm: chart.bpm }, '書き出した譜面を読み込み');
+    editorStore.commitDoc({ ...doc, choruses: chart.choruses.map((c) => ({ ...c })), levels, bpm: chart.bpm, noteMode: chart.generationRules?.noteMode ?? 'independent' }, '書き出した譜面を読み込み');
     editorStore.setDialog({ kind: 'none' });
     this.checkConflictsAfterLoad('chart.json');
   }

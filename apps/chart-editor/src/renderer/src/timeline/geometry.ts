@@ -17,7 +17,7 @@ export function buildLanes(visibleLevels: Record<LevelKey, boolean>): Lane[] {
   lanes.push({ kind: 'waveform', y, h: LANE_HEIGHTS.waveform });
   y += LANE_HEIGHTS.waveform;
   for (const k of LEVEL_KEYS) {
-    if (!visibleLevels[k]) continue;
+    if (k === '4' || !visibleLevels[k]) continue;
     lanes.push({ kind: 'level', level: k, y, h: LANE_HEIGHTS.level });
     y += LANE_HEIGHTS.level;
   }

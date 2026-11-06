@@ -57,6 +57,7 @@ export const chartFileV1Schema = z.object({
       crossLevelExclusionMs: z.number().int().min(0).max(10000),
       levelPriority: z.array(z.number().int().min(1).max(4)).max(4),
       crossLevelNotesAreExclusive: z.boolean(),
+      noteMode: z.enum(['independent', 'additive']).optional(),
     })
     .optional(),
 });

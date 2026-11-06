@@ -300,6 +300,23 @@ function drawNotes(input: DrawInput, fromMs: number, toMs: number): void {
     const times = notes.map((n) => n.hitAtMs);
     const [a, b] = visibleRange(times, fromMs - margin, toMs + margin);
     const isActive = state.view.activeLevel === level;
+    // 下位レベルは参考表示のみ。選択・保存対象には含めない。
+    if (doc.noteMode === 'additive') {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([3, 3]);
+      for (const lower of ['1', '2'] as const) {
+        if (Number(lower) >= Number(level)) continue;
+        for (const n of doc.levels[lower].notes) {
+          if (noteEndMs(n) < fromMs || n.hitAtMs > toMs) continue;
+          const x = xOf(scale, n.hitAtMs);
+          ctx.beginPath(); ctx.moveTo(x, lane.y + 20); ctx.lineTo(x, lane.y + lane.h - 6); ctx.stroke();
+          if (n.type === 'mash' && n.durationMs) ctx.strokeRect(x, lane.y + 28, xOf(scale, noteEndMs(n)) - x, 8);
+        }
+      }
+      ctx.restore();
+    }
     // ラベル
     ctx.fillStyle = isActive ? color : 'rgba(255,255,255,0.4)';
     ctx.font = 'bold 11px -apple-system, "Hiragino Sans", sans-serif';
@@ -307,7 +324,7 @@ function drawNotes(input: DrawInput, fromMs: number, toMs: number): void {
     ctx.fillText(`L${level}`, 6, lane.y + 13);
     ctx.fillStyle = 'rgba(255,255,255,0.35)';
     ctx.font = '10px -apple-system, "Hiragino Sans", sans-serif';
-    ctx.fillText(`${doc.levels[level].displayName}  ${notes.length}ヒット`, 28, lane.y + 13);
+    ctx.fillText(`${doc.levels[level].displayName}  ${notes.length}${doc.noteMode === 'additive' && level !== '1' ? '追加打点' : 'ヒット'}`, 28, lane.y + 13);
     if (isActive) {
       ctx.fillStyle = color;
       ctx.fillRect(0, lane.y, 3, lane.h);

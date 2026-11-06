@@ -41,7 +41,7 @@ describe('EditorLibrary', () => {
     expect((await lib.list())[0]!.fileName).toBe('renamed.wav');
     expect((await lib.list())[0]!.hasProject).toBe(false);
     // 譜面データの保存で一覧情報が更新される
-    let doc = cmd.documentWithAudio(cmd.createEmptyDocument(), { ...audioMeta, sha256: info.sha256, fileName: 'original.wav', durationMs: 30000 });
+    let doc = cmd.documentWithAudio(cmd.createEmptyDocument('independent'), { ...audioMeta, sha256: info.sha256, fileName: 'original.wav', durationMs: 30000 });
     doc = { ...doc, title: 'テスト曲', bpm: 128 };
     const add = cmd.addNote(doc, '1', findFreeTime(doc, '1'));
     if (!add.ok) throw new Error(add.message);

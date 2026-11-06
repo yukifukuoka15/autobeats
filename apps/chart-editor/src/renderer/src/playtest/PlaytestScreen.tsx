@@ -54,7 +54,7 @@ export function PlaytestScreen() {
     controller.pause();
     controller.transport.setRate(1);
     controller.seek(startMs);
-    const e = new PlaytestEngine(doc.levels, { startMs, durationMs: doc.audio.durationMs, inputOffsetMs });
+    const e = new PlaytestEngine({ ...doc.levels, '4': { notes: [] } }, { startMs, durationMs: doc.audio.durationMs, inputOffsetMs });
     engineRef.current = e;
     setEngine(e);
     held.current.clear();
@@ -69,7 +69,7 @@ export function PlaytestScreen() {
       const k = e.key.toLowerCase();
       // LEVEL 1 は Q とスペースキーの両方で反応する
       if (k === ' ' || e.code === 'Space') return '1';
-      for (const level of LEVEL_KEYS) if (PLAYTEST_KEYS[level] === k) return level;
+      for (const level of LEVEL_KEYS.filter((k) => k !== '4')) if (PLAYTEST_KEYS[level] === k) return level;
       return null;
     };
     const down = (e: KeyboardEvent) => {
@@ -180,7 +180,7 @@ export function PlaytestScreen() {
         </div>
       </div>
       <div className="pt-lanes">
-        {LEVEL_KEYS.map((level) => (
+        {LEVEL_KEYS.filter((k) => k !== '4').map((level) => (
           <Lane key={level} level={level} engine={engine} phase={phase} now={now} heldKey={heldKeys.has(level)} reduceMotion={reduceMotion} />
         ))}
       </div>

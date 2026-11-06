@@ -1,5 +1,5 @@
 import type { AnalysisResult } from '@autobeats/audio-analysis';
-import type { ChartLevel, ChartNote, ChorusSection, LevelGenerationSettings, LevelKey, ChartIssue } from '@autobeats/chart-format';
+import type { ChartLevel, ChartNote, ChorusSection, LevelGenerationSettings, LevelKey, ChartIssue, ChartGenerationRules } from '@autobeats/chart-format';
 
 /** renderer が持つ音声メタ情報。絶対パスは含めない（main がトークンで管理する） */
 export interface AudioMeta {
@@ -27,6 +27,8 @@ export interface ViewState {
 
 /** 編集ドキュメント（Undo/Redo の単位） */
 export interface EditorDocument {
+  /** additive: 各レベルは統合前の追加分だけを保持する */
+  noteMode?: 'independent' | 'additive';
   title: string;
   artist: string;
   trackId: string;
@@ -105,6 +107,7 @@ export interface VerifyPackageResult {
   errors: ChartIssue[];
   warnings: ChartIssue[];
   chart?: {
+    generationRules?: ChartGenerationRules;
     trackId: string;
     title: string;
     audioSha256: string;

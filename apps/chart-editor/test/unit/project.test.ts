@@ -16,7 +16,7 @@ describe('project file', () => {
   });
 
   it('ドキュメント → ファイル → ドキュメントを往復できる', async () => {
-    let doc = cmd.documentWithAudio(cmd.createEmptyDocument(), audioMeta);
+    let doc = cmd.documentWithAudio(cmd.createEmptyDocument('independent'), audioMeta);
     doc = cmd.regenerateLevels(cmd.applyAnalysis(doc, syntheticAnalysis()), ['1', '2', '3', '4'], 'replace').doc;
     const added = cmd.addNote(doc, '3', findFreeTime(doc, '3', 4000));
     if (!added.ok) throw new Error(added.message);
@@ -50,7 +50,7 @@ describe('project file', () => {
   });
 
   it('自動保存を書き、一覧し、削除できる', async () => {
-    const doc = cmd.documentWithAudio(cmd.createEmptyDocument(), audioMeta);
+    const doc = cmd.documentWithAudio(cmd.createEmptyDocument('independent'), audioMeta);
     const file = buildProjectFile({ document: doc, audioPath: '/tmp/song.wav', view: null });
     const key = autosaveKey('/some/project.rhythm-project.json', 'sess');
     expect(autosaveKey(null, 'sess')).toBe('unsaved-sess');

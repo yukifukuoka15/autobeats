@@ -59,7 +59,7 @@ export function findFreeTime(doc: ReturnType<typeof cmd.createEmptyDocument>, le
 }
 
 describe('document commands', () => {
-  const base = cmd.documentWithAudio(cmd.createEmptyDocument(), audioMeta);
+  const base = cmd.documentWithAudio(cmd.createEmptyDocument('independent'), audioMeta);
 
   it('音符の追加・移動・削除は整数へ丸め、範囲外は拒否し、手作業として記録する', () => {
     const r = cmd.addNote(base, '1', 1234.6);
@@ -131,7 +131,7 @@ describe('document commands', () => {
 
 describe('editorStore', () => {
   it('音符とサビの編集を Undo/Redo で往復でき、保存位置で未保存が解除される', () => {
-    editorStore.replaceDocument(cmd.documentWithAudio(cmd.createEmptyDocument(), audioMeta), { projectName: 'test' });
+    editorStore.replaceDocument(cmd.documentWithAudio(cmd.createEmptyDocument('independent'), audioMeta), { projectName: 'test' });
     expect(editorStore.dirty).toBe(false);
     const id = editorStore.addNote('1', 1000)!;
     editorStore.addChorus(5000, 9000);
@@ -157,7 +157,7 @@ describe('editorStore', () => {
   });
 
   it('解析適用後の再生成が1操作で Undo できる', () => {
-    editorStore.replaceDocument(cmd.documentWithAudio(cmd.createEmptyDocument(), audioMeta), { projectName: null });
+    editorStore.replaceDocument(cmd.documentWithAudio(cmd.createEmptyDocument('independent'), audioMeta), { projectName: null });
     editorStore.applyAnalysis(syntheticAnalysis());
     const before = editorStore.doc.levels['4'].notes.length;
     expect(before).toBeGreaterThan(0);

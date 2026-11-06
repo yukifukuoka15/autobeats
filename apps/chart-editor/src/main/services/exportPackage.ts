@@ -15,6 +15,7 @@ import {
 import { atomicWriteFile, findAvailablePath, nodePackageFs } from '@autobeats/chart-format/node';
 import { promises as fsp } from 'node:fs';
 import * as path from 'node:path';
+import { findNoteIssues } from '../../renderer/src/store/document';
 import type { EditorDocument } from '../../shared/types';
 
 /** 編集ドキュメントからゲーム用 ChartFile を組み立てる（検証は validateChart で行う） */
@@ -25,7 +26,7 @@ export function documentToChart(doc: EditorDocument, audioFileName: string): Cha
       displayName: doc.levels[k].displayName,
       notes: [...doc.levels[k].notes]
         .sort((a, b) => a.hitAtMs - b.hitAtMs)
-        .map((n) => ({ id: n.id, hitAtMs: Math.round(n.hitAtMs), source: n.source, ...(n.reason ? { reason: n.reason } : {}), ...(n.type ? { type: n.type } : {}) })),
+        .map((n) => ({ id: n.id, hitAtMs: Math.round(n.hitAtMs), source: n.source, ...(n.reason ? { reason: n.reason } : {}), ...(n.type ? { type: n.type } : {}), ...(n.type === 'mash' ? { durationMs: n.durationMs } : {}) })),
     };
   }
   return {
@@ -42,7 +43,7 @@ export function documentToChart(doc: EditorDocument, audioFileName: string): Cha
     analysis: { engineVersion: doc.analysis?.engineVersion ?? 'manual', analyzedAt: doc.analysis?.analyzedAt ?? new Date().toISOString() },
     choruses: [...doc.choruses].sort((a, b) => a.startMs - b.startMs).map((c) => ({ ...c })),
     levels,
-    generationRules: { crossLevelExclusionMs: 0, levelPriority: [...LEVEL_PRIORITY], crossLevelNotesAreExclusive: false },
+    generationRules: { noteMode: doc.noteMode ?? 'independent', crossLevelExclusionMs: doc.noteMode === 'additive' ? 80 : 0, levelPriority: [...LEVEL_PRIORITY], crossLevelNotesAreExclusive: doc.noteMode === 'additive' },
   };
 }
 
@@ -53,7 +54,7 @@ export function exportValidationOptions(doc: EditorDocument) {
 
 export function minGapMapFromDocument(doc: EditorDocument): Record<LevelKey, number> {
   const out = {} as Record<LevelKey, number>;
-  for (const k of LEVEL_KEYS) out[k] = doc.levelSettings[k]?.minGapMs ?? DEFAULT_LEVEL_SETTINGS[Number(k) as 1 | 2 | 3 | 4].minGapMs;
+  for (const k of LEVEL_KEYS) out[k] = Math.max(doc.noteMode === 'additive' ? 81 : 1, doc.levelSettings[k]?.minGapMs ?? DEFAULT_LEVEL_SETTINGS[Number(k) as 1 | 2 | 3 | 4].minGapMs);
   return out;
 }
 
@@ -75,6 +76,8 @@ export async function exportGamePackage(doc: EditorDocument, audioPath: string, 
   const audioFileName = `audio${doc.audio.extension}`;
   const chart = documentToChart(doc, audioFileName);
   const validationOptions = exportValidationOptions(doc);
+  const additionIssues = findNoteIssues(doc).filter((i) => i.code === 'cross-level');
+  if (additionIssues.length) return { status: 'error', errors: additionIssues.map((i) => ({ code: i.code, message: i.message })) };
   const validated = validateChart(chart, validationOptions);
   if (!validated.ok) return { status: 'error', errors: validated.errors };
 
@@ -110,6 +113,8 @@ export async function exportGamePackage(doc: EditorDocument, audioPath: string, 
 export async function exportChartJson(doc: EditorDocument, filePath: string): Promise<{ ok: true; warnings: ChartIssue[] } | { ok: false; errors: ChartIssue[] }> {
   if (!doc.audio) return { ok: false, errors: [{ code: 'no-audio', message: '楽曲が読み込まれていません。' }] };
   const chart = documentToChart(doc, `audio${doc.audio.extension}`);
+  const additionIssues = findNoteIssues(doc).filter((i) => i.code === 'cross-level');
+  if (additionIssues.length) return { ok: false, errors: additionIssues.map((i) => ({ code: i.code, message: i.message })) };
   const validated = validateChart(chart, exportValidationOptions(doc));
   if (!validated.ok) return { ok: false, errors: validated.errors };
   await atomicWriteFile(filePath, serializeChart(validated.chart));

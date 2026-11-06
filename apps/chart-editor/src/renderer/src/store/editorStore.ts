@@ -143,7 +143,7 @@ class EditorStore {
       history,
       selection: null,
       projectName: options.projectName,
-      view: options.view ? { ...DEFAULT_VIEW, ...options.view } : { ...DEFAULT_VIEW },
+      view: { ...DEFAULT_VIEW, ...options.view, activeLevel: options.view?.activeLevel === '4' ? '1' : (options.view?.activeLevel ?? '1') },
       loop: { enabled: false, startMs: 0, endMs: 0 },
       analysis: { jobId: this.state.analysis.jobId, status: 'idle', stage: 'prepare', ratio: 0, message: '' },
       dragPreview: null,
@@ -289,7 +289,7 @@ class EditorStore {
     const hasNotes = LEVEL_KEYS.some((k) => withAnalysis.levels[k].notes.length > 0);
     const outcome = hasNotes ? null : cmd.regenerateLevels(withAnalysis, LEVEL_KEYS, 'replace');
     this.commitDoc(outcome ? outcome.doc : withAnalysis, '解析結果を適用');
-    if (hasNotes) this.set({ dialog: { kind: 'regenerate', reason: 'analysis' } });
+    if (hasNotes && withAnalysis.noteMode !== 'additive') this.set({ dialog: { kind: 'regenerate', reason: 'analysis' } });
     return outcome?.shortfalls ?? [];
   }
   /** 再生成（LEVEL 1→4 の優先順）。目標数に届かなかったレベルの警告を返す */

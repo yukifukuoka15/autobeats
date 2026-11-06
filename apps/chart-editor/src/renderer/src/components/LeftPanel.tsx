@@ -97,8 +97,14 @@ export function LeftPanel() {
         </div>
       </section>
       <section>
+        <h3>追加譜面の作成</h3>
+        <label className="inline"><input type="checkbox" data-testid="additive-mode" checked={doc.noteMode === 'additive'} onChange={(e) => editorStore.commitDoc({ ...doc, noteMode: e.target.checked ? 'additive' : 'independent' }, '譜面作成方式を変更')} /> Lv1を土台に追加分だけ作成</label>
+        <p className="hint">Lv1は基本譜面です。空なら自動生成し、既存のLv1は保持します。Lv2はLv1への追加分、Lv3はLv1＋Lv2への追加分だけを保存します。統合は別アプリで行ってください。統合後の打点は80msより離します。</p>
+        <button data-testid="generate-additions" disabled={!doc.analysis || doc.noteMode !== 'additive'} onClick={() => editorStore.setDialog({ kind: 'regenerate', reason: 'settings' })}>Lv1からLv2・Lv3の追加分を生成…</button>
+      </section>
+      <section>
         <h3>難易度設定</h3>
-        {LEVEL_KEYS.map((k) => (
+        {LEVEL_KEYS.filter((k) => k !== '4').map((k) => (
           <LevelSettings key={k} level={k} active={view.activeLevel === k} />
         ))}
       </section>
@@ -123,7 +129,7 @@ function LibrarySection({ currentSha }: { currentSha: string | null }) {
               </div>
               <div className="lib-meta">
                 {e.durationMs > 0 ? formatTimecode(e.durationMs, false) : '--:--'} / BPM {e.bpm > 0 ? e.bpm.toFixed(1) : '-'}
-                {e.hasProject ? ` / L1 ${e.noteCounts['1']} L2 ${e.noteCounts['2']} L3 ${e.noteCounts['3']} L4 ${e.noteCounts['4']}` : ' / 譜面なし'}
+                {e.hasProject ? ` / L1 ${e.noteCounts['1']} L2 ${e.noteCounts['2']} L3 ${e.noteCounts['3']}` : ' / 譜面なし'}
               </div>
               <div className="lib-meta dim">更新 {new Date(e.updatedAt).toLocaleString('ja-JP')}</div>
               <div className="row">

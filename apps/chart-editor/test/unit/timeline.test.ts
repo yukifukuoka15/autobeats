@@ -18,9 +18,9 @@ describe('timeline geometry', () => {
     expect(clampScroll(-5, 100, 60000, 1000)).toBe(0);
     expect(clampScroll(999999, 100, 60000, 1000)).toBeLessThanOrEqual(60000);
   });
-  it('レーンは波形→L1→L2→L3→L4 の順', () => {
+  it('Lv4はレーンに表示しない', () => {
     const lanes = buildLanes({ '1': true, '2': false, '3': true, '4': true });
-    expect(lanes.map((l) => (l.kind === 'level' ? `L${l.level}` : l.kind))).toEqual(['ruler', 'chorus', 'waveform', 'L1', 'L3', 'L4']);
+    expect(lanes.map((l) => (l.kind === 'level' ? `L${l.level}` : l.kind))).toEqual(['ruler', 'chorus', 'waveform', 'L1', 'L3']);
   });
   it('目盛り間隔はズームに応じて変わる', () => {
     expect(pickTickStepMs(0.01).major).toBeGreaterThanOrEqual(5000);

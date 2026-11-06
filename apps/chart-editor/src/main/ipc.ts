@@ -1,4 +1,5 @@
-import { CHART_FILE_NAME, DEFAULT_LEVEL_SETTINGS, LEVEL_KEYS, sanitizeTrackId, verifyChartPackage, chartLevelSchema, chorusSectionSchema } from '@autobeats/chart-format';
+import { createEmptyDocument } from '../renderer/src/store/document';
+import { CHART_FILE_NAME, LEVEL_KEYS, sanitizeTrackId, verifyChartPackage, chartLevelSchema, chorusSectionSchema } from '@autobeats/chart-format';
 import { nodePackageFs } from '@autobeats/chart-format/node';
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import { randomBytes } from 'node:crypto';
@@ -54,6 +55,7 @@ const audioMetaSchema = z.object({
 });
 const levelSettingsSchema = z.object({ density: z.number(), minGapMs: z.number(), chorusDensityMultiplier: z.number(), beatSnapStrength: z.number() });
 const documentSchema = z.object({
+  noteMode: z.enum(['independent', 'additive']).optional(),
   title: z.string().max(256),
   artist: z.string().max(256),
   trackId: z.string().max(64),
@@ -416,7 +418,7 @@ export function registerIpc(rebuildMenu: () => Promise<void>): void {
       displayPath: displayPath(dir),
       errors: [],
       warnings: result.pkg.warnings,
-      chart: { trackId: c.trackId, title: c.title, audioSha256: c.audioSha256, durationMs: c.durationMs, bpm: c.bpm, choruses: c.choruses, levels },
+      chart: { generationRules: c.generationRules, trackId: c.trackId, title: c.title, audioSha256: c.audioSha256, durationMs: c.durationMs, bpm: c.bpm, choruses: c.choruses, levels },
     };
   });
 
@@ -493,11 +495,5 @@ export async function openAudioPath(filePath: string): Promise<AudioOpenResult> 
 }
 
 function emptyDocumentWithTitle(title: string): EditorDocument {
-  const levels = {} as EditorDocument['levels'];
-  const levelSettings = {} as EditorDocument['levelSettings'];
-  for (const k of LEVEL_KEYS) {
-    levels[k] = { displayName: `LEVEL ${k}`, notes: [] };
-    levelSettings[k] = { ...DEFAULT_LEVEL_SETTINGS[Number(k) as 1 | 2 | 3 | 4] };
-  }
-  return { title, artist: '', trackId: sanitizeTrackId(title, 'track'), audio: null, analysis: null, bpm: 120, offsetMs: 0, choruses: [], levels, levelSettings };
+  return { ...createEmptyDocument(), title, trackId: sanitizeTrackId(title, 'track') };
 }

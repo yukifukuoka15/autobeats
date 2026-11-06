@@ -7,7 +7,7 @@ import { audioMeta, syntheticAnalysis } from './document.test';
 
 
 const note = (id: string, hitAtMs: number): ChartNote => ({ id, hitAtMs, source: 'manual' });
-const base = () => cmd.documentWithAudio(cmd.createEmptyDocument(), audioMeta);
+const base = () => cmd.documentWithAudio(cmd.createEmptyDocument('independent'), audioMeta);
 
 describe('難易度間の重なりを許可する', () => {
   it.each([0, 1, 79, 80, 81])('他難易度から %ims の位置に追加できる', (delta) => {

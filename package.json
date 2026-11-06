@@ -1,7 +1,7 @@
 {
   "name": "autobeats",
   "private": true,
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "高専祭2026 向け オフライン楽曲解析・4難易度譜面エディターとネオンヒット連携",
   "workspaces": [
     "packages/*",

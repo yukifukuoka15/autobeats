@@ -6,7 +6,7 @@ import * as cmd from '../../src/renderer/src/store/document';
 import { editorStore } from '../../src/renderer/src/store/editorStore';
 import { audioMeta, syntheticAnalysis } from './document.test';
 
-const base = cmd.documentWithAudio(cmd.createEmptyDocument(), audioMeta);
+const base = cmd.documentWithAudio(cmd.createEmptyDocument('independent'), audioMeta);
 
 describe('連打（mash）の編集', () => {
   it('F 長押し相当の addMash は区間を持つ連打を追加し、短すぎる・重なる・他レベル近接は許可する', () => {

@@ -37,6 +37,7 @@ export function RightPanel() {
 const PAIR_KEYS = ['1-2', '1-3', '1-4', '2-3', '2-4', '3-4'] as const;
 
 function ValidationSection({ issues }: { issues: NoteIssue[] }) {
+  const doc = useDocument();
   const summary = useMemo(() => summarizeIssues(issues), [issues]);
   const readOnly = useEditorState((s) => s.readOnly);
   const generationWarnings = useEditorState((s) => s.generationWarnings);
@@ -67,16 +68,16 @@ function ValidationSection({ issues }: { issues: NoteIssue[] }) {
         <p className="hint ok" data-testid="issues-none">
           検証OK
           <br />
-          難易度間の同時刻・近接配置は許可されます。
+          {doc.noteMode === 'additive' ? '追加分は他レベルの打点から80msより離れています。' : '難易度間の同時刻・近接配置は許可されます。'}
           <br />
           同一レベル内の衝突、範囲外、最小間隔違反はありません。
         </p>
       ) : (
         <div data-testid="issues-summary">
           <ul className="issues summary">
-            {summary.byCode['cross-level'] > 0 && (
+            {doc.noteMode !== 'additive' && summary.byCode['cross-level'] > 0 && (
               <li className="error" data-testid="issues-cross-level">
-                難易度間の衝突: {summary.byCode['cross-level']}件
+                統合後の間隔不足: {summary.byCode['cross-level']}件
                 <ul>
                   {PAIR_KEYS.map((k) => (
                     <li key={k} data-testid={`issues-pair-${k}`}>
@@ -92,7 +93,7 @@ function ValidationSection({ issues }: { issues: NoteIssue[] }) {
             {summary.byCode['bad-id'] > 0 && <li className="error">不正なID: {summary.byCode['bad-id']}件</li>}
             {summary.byCode['non-integer'] > 0 && <li className="error">非整数の hitAtMs: {summary.byCode['non-integer']}件</li>}
           </ul>
-          {summary.byCode['cross-level'] > 0 && (
+          {doc.noteMode !== 'additive' && summary.byCode['cross-level'] > 0 && (
             <div className="row">
               <button className="small accent" data-testid="btn-repair-conflicts" onClick={() => controller.repairConflicts()}>
                 衝突しているヒットだけ修復

@@ -77,6 +77,7 @@ export interface ChartFile {
 }
 
 export interface ChartGenerationRules {
+  noteMode?: 'independent' | 'additive';
   crossLevelExclusionMs: number;
   levelPriority: number[];
   crossLevelNotesAreExclusive: boolean;

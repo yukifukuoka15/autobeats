@@ -18,7 +18,7 @@ describe('exportGamePackage', () => {
     const wav = encodeWav16([sine(440, 2, 8000)], 8000);
     audioPath = path.join(dir, 'src.wav');
     await writeFile(audioPath, wav);
-    doc = cmd.documentWithAudio(cmd.createEmptyDocument(), { ...audioMeta, sha256: sha256Buffer(wav), durationMs: 2000 });
+    doc = cmd.documentWithAudio(cmd.createEmptyDocument('independent'), { ...audioMeta, sha256: sha256Buffer(wav), durationMs: 2000 });
     doc = cmd.regenerateLevels(cmd.applyAnalysis(doc, syntheticAnalysis(2000)), ['1', '2', '3', '4'], 'replace').doc;
     doc = { ...doc, trackId: 'my-song', choruses: [] };
   });

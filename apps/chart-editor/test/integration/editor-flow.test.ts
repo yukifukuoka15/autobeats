@@ -30,7 +30,7 @@ describe('editor flow (WAV → 解析 → 生成 → 編集 → 保存 → 再�
     const analysis = await analyzeAudio(decoded);
     expect(Math.abs(analysis.bpm - 120)).toBeLessThan(2);
     const sha256 = await sha256File(FIXTURE);
-    let doc: EditorDocument = cmd.documentWithAudio(cmd.createEmptyDocument(), {
+    let doc: EditorDocument = cmd.documentWithAudio(cmd.createEmptyDocument('independent'), {
       token: 't'.repeat(32),
       fileName: 'song.wav',
       extension: '.wav',

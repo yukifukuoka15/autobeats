@@ -1,8 +1,10 @@
-import { CROSS_LEVEL_EXCLUSION_MS, LEVEL_KEYS } from '@autobeats/chart-format';
+import { CROSS_LEVEL_EXCLUSION_MS } from '@autobeats/chart-format';
 import { controller } from '../controller';
-import { editorStore, useEditorState } from '../store/editorStore';
+import { editorStore, useDocument, useEditorState } from '../store/editorStore';
 
 export function Dialogs() {
+  const doc = useDocument();
+  const additive = doc.noteMode === 'additive';
   const dialog = useEditorState((s) => s.dialog);
   const view = useEditorState((s) => s.view);
   if (dialog.kind === 'none') return null;
@@ -21,10 +23,10 @@ export function Dialogs() {
               <input type="checkbox" id="keep-manual" defaultChecked /> 手作業で追加・移動したヒット（連打を含む）を残す（オフにすると置き換えます）
             </label>
             <div className="actions">
-              <button data-testid="regen-all" className="accent" onClick={() => { close(); controller.regenerate(LEVEL_KEYS, keepManual() ? 'keep' : 'replace'); }}>
-                4難易度を再生成
+              <button data-testid="regen-all" className="accent" onClick={() => { close(); controller.regenerate(additive ? ['2', '3'] : ['1', '2', '3'], keepManual() ? 'keep' : 'replace'); }}>
+                {additive ? '追加分を生成（空のLv1は自動作成）' : '3難易度を再生成'}
               </button>
-              <button data-testid="regen-active" onClick={() => { close(); controller.regenerate([view.activeLevel], keepManual() ? 'keep' : 'replace'); }}>
+              <button data-testid="regen-active" disabled={additive && view.activeLevel === '1' && doc.levels['1'].notes.length > 0} onClick={() => { close(); controller.regenerate([view.activeLevel], keepManual() ? 'keep' : 'replace'); }}>
                 選択レベル（L{view.activeLevel}）だけ再生成
               </button>
               <button data-testid="regen-keep" onClick={close}>

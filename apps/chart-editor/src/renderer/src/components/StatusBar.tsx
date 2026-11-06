@@ -53,7 +53,7 @@ export function StatusBar() {
         )}
       </div>
       <div className="counts" data-testid="note-counts">
-        {LEVEL_KEYS.map((k) => (
+        {LEVEL_KEYS.filter((k) => k !== '4').map((k) => (
           <span key={k} data-testid={`count-${k}`}>
             L{k}: {doc.levels[k].notes.length}
           </span>

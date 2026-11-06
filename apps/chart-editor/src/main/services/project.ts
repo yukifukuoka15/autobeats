@@ -65,6 +65,7 @@ export const projectFileSchema = z.object({
   format: z.literal(PROJECT_FORMAT),
   formatVersion: z.literal(PROJECT_FORMAT_VERSION),
   savedAt: z.string(),
+  noteMode: z.enum(['independent', 'additive']).optional(),
   title: z.string().max(256),
   artist: z.string().max(256),
   trackId: z.string().max(64),
@@ -154,6 +155,7 @@ export function buildProjectFile(input: BuildProjectInput, now = new Date()): Pr
     format: PROJECT_FORMAT,
     formatVersion: PROJECT_FORMAT_VERSION,
     savedAt: now.toISOString(),
+    noteMode: d.noteMode ?? 'independent',
     title: d.title,
     artist: d.artist,
     trackId: d.trackId,
@@ -177,6 +179,7 @@ export function projectToDocument(p: ProjectFile, audioToken: string, audioDispl
   const levels = {} as Record<LevelKey, { displayName: string; notes: EditorDocument['levels']['1']['notes'] }>;
   for (const k of LEVEL_KEYS) levels[k] = { displayName: p.levels[k].displayName, notes: p.levels[k].notes.map((n) => ({ ...n })) };
   return {
+    noteMode: p.noteMode ?? 'independent',
     title: p.title,
     artist: p.artist,
     trackId: p.trackId,
@@ -244,6 +247,7 @@ export async function addRecent(userData: string, projectPath: string, max = 10)
 
 const autosaveEnvelopeSchema = z.object({
   savedAt: z.string(),
+  noteMode: z.enum(['independent', 'additive']).optional(),
   originalPath: z.string().nullable(),
   project: z.unknown(),
 });

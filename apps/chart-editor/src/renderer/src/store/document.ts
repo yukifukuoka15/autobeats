@@ -1,5 +1,8 @@
 import { generateLevelDetailed, type AnalysisResult, type LevelGenerationResult, type ManualNotePolicy } from '@autobeats/audio-analysis';
 import {
+  CROSS_LEVEL_EXCLUSION_MS,
+  findNearestCrossLevelConflict,
+  findCrossLevelConflicts,
   DEFAULT_LEVEL_SETTINGS,
   LEVEL_DISPLAY_NAMES,
   LEVEL_KEYS,
@@ -26,18 +29,20 @@ export function levelNumber(key: LevelKey): LevelNumber {
   return Number(key) as LevelNumber;
 }
 
-export function createEmptyDocument(): EditorDocument {
+export const EDITOR_LEVEL_KEYS = ['1', '2', '3'] as const;
+
+export function createEmptyDocument(noteMode: EditorDocument['noteMode'] = 'additive'): EditorDocument {
   const levels = {} as EditorDocument['levels'];
   const levelSettings = {} as EditorDocument['levelSettings'];
   for (const k of LEVEL_KEYS) {
     levels[k] = { displayName: LEVEL_DISPLAY_NAMES[levelNumber(k)], notes: [] };
-    levelSettings[k] = { ...DEFAULT_LEVEL_SETTINGS[levelNumber(k)] };
+    levelSettings[k] = { ...DEFAULT_LEVEL_SETTINGS[levelNumber(k)], ...(noteMode === 'additive' && k === '2' ? { density: 0.65 } : {}), ...(noteMode === 'additive' && k === '3' ? { density: 0.9 } : {}) };
   }
-  return { title: '', artist: '', trackId: 'track', audio: null, analysis: null, bpm: 120, offsetMs: 0, choruses: [], levels, levelSettings };
+  return { noteMode, title: '', artist: '', trackId: 'track', audio: null, analysis: null, bpm: 120, offsetMs: 0, choruses: [], levels, levelSettings };
 }
 
 export function documentWithAudio(doc: EditorDocument, audio: AudioMeta): EditorDocument {
-  const base = doc.audio && doc.audio.sha256 !== audio.sha256 ? { ...createEmptyDocument(), levelSettings: doc.levelSettings } : doc;
+  const base = doc.audio && doc.audio.sha256 !== audio.sha256 ? { ...createEmptyDocument(doc.noteMode ?? 'independent'), levelSettings: doc.levelSettings } : doc;
   const stem = audio.fileName.replace(/\.[^.]+$/, '');
   return {
     ...base,
@@ -94,7 +99,7 @@ export function checkPlacement(doc: EditorDocument, level: LevelKey, placements:
   const movingIds = new Set(placements.map((p) => p.id).filter((id): id is string => !!id));
   const warnings: string[] = [];
   const others = doc.levels[level].notes.filter((n) => !movingIds.has(n.id));
-  const minGap = doc.levelSettings[level].minGapMs;
+  const minGap = Math.max(doc.noteMode === 'additive' ? 81 : 1, doc.levelSettings[level].minGapMs);
   const seen = new Set<number>();
   for (const p of placements) {
     const t = p.hitAtMs;
@@ -107,17 +112,26 @@ export function checkPlacement(doc: EditorDocument, level: LevelKey, placements:
     if (end > dur) return { ok: false, message: `連打の終了（${formatTimecode(end)}）が曲の長さ（${formatTimecode(dur)}）を超えます。` };
     if (seen.has(t)) return { ok: false, message: `移動先 ${formatTimecode(t)} に複数のヒットが重なります。` };
     seen.add(t);
+    if (doc.noteMode === 'additive') {
+      const conflict = findNearestCrossLevelConflict(t, levelNumber(level), { ...doc.levels, '4': { notes: [] } }, CROSS_LEVEL_EXCLUSION_MS, movingIds, dMs);
+      if (conflict) return { ok: false, conflict, message: `統合後の間隔を確保できません。Lv${conflict.level} の ${formatTimecode(conflict.hitAtMs)} から ${conflict.diffMs}ms です。追加分は既存の打点から80msより離してください。` };
+    }
     for (const o of others) {
       const oEnd = noteEndMs(o);
       // 区間同士の距離（重なれば 0）
       const gap = oEnd < t ? t - oEnd : end < o.hitAtMs ? o.hitAtMs - end : 0;
       if (gap === 0) return { ok: false, message: `LEVEL ${level} の ${formatTimecode(o.hitAtMs)} のヒットと重なります。` };
+      if (doc.noteMode === 'additive' && gap <= 80) return { ok: false, message: '統合後の打点間隔は80msより離してください。' };
       if (gap < minGap) {
         const msg = `LEVEL ${level} の ${formatTimecode(o.hitAtMs)} との間隔 ${gap}ms が最小間隔 ${minGap}ms を下回ります。`;
         if (options.rejectMinGap) return { ok: false, message: msg };
         warnings.push(msg);
       }
     }
+  }
+  if (doc.noteMode === 'additive') {
+    const sorted = [...placements].sort((a, b) => a.hitAtMs - b.hitAtMs);
+    for (let i = 1; i < sorted.length; i++) if (sorted[i]!.hitAtMs - (sorted[i - 1]!.hitAtMs + (sorted[i - 1]!.durationMs ?? 0)) <= 80) return { ok: false, message: '移動対象同士の打点間隔は80msより離してください。' };
   }
   // 移動対象同士の最小間隔
   const sortedT = [...seen].sort((a, b) => a - b);
@@ -275,6 +289,7 @@ export interface RegenerateOutcome {
  */
 export function regenerateLevels(doc: EditorDocument, levels: readonly LevelKey[], manualPolicy: ManualNotePolicy): RegenerateOutcome {
   if (!doc.analysis) return { doc, reports: [], shortfalls: [] };
+  if (doc.noteMode === 'additive') return regenerateAdditions(doc, levels, manualPolicy);
   const durationMs = durationOf(doc) || doc.analysis.durationMs;
   const existing = {} as Record<LevelNumber, readonly ChartNote[]>;
   const settings = {} as Record<LevelNumber, LevelGenerationSettings>;
@@ -299,6 +314,38 @@ export function regenerateLevels(doc: EditorDocument, levels: readonly LevelKey[
     if (r.generatedCount < r.targetCount) {
       shortfalls.push(`LEVEL ${l}は、目標ヒット数に達しませんでした。\n生成数: ${r.generatedCount} / 目標: ${r.targetCount}`);
     }
+  }
+  return { doc: next, reports, shortfalls };
+}
+
+/** Lv1は変更せず、Lv2→Lv3の追加分だけを生成する。 */
+function regenerateAdditions(doc: EditorDocument, requested: readonly LevelKey[], manualPolicy: ManualNotePolicy): RegenerateOutcome {
+  const sourceAnalysis = doc.analysis;
+  if (!sourceAnalysis) return { doc, reports: [], shortfalls: [] };
+  if (doc.levels['1'].notes.length === 0) {
+    const usedTimes = EDITOR_LEVEL_KEYS.filter((k) => k !== '1').flatMap((k) => doc.levels[k].notes.map((n) => ({ level: levelNumber(k), hitAtMs: n.hitAtMs, id: n.id, durationMs: n.type === 'mash' ? n.durationMs : undefined })));
+    const base = generateLevelDetailed(1, { analysis: sourceAnalysis, choruses: doc.choruses, durationMs: durationOf(doc), settings: { 1: { ...doc.levelSettings['1'], minGapMs: Math.max(81, doc.levelSettings['1'].minGapMs) } }, usedTimes, crossLevelExclusionMs: CROSS_LEVEL_EXCLUSION_MS });
+    doc = updateLevel(doc, '1', base.notes);
+    if (base.notes.length === 0) return { doc, reports: [base], shortfalls: ['Lv1の生成候補がありません。音源や解析結果を確認してください。'] };
+  }
+  const targets = EDITOR_LEVEL_KEYS.filter((k) => k !== '1' && requested.includes(k));
+  let next = doc;
+  for (const k of targets) next = updateLevel(next, k, manualPolicy === 'keep' ? next.levels[k].notes.filter((n) => n.source === 'manual') : []);
+  const reports: LevelGenerationResult[] = [];
+  const shortfalls: string[] = [];
+  for (const key of targets) {
+    const level = levelNumber(key);
+    const lower = EDITOR_LEVEL_KEYS.filter((k) => Number(k) < level).flatMap((k) => next.levels[k].notes);
+    const usedTimes = EDITOR_LEVEL_KEYS.filter((k) => k !== key).flatMap((k) => next.levels[k].notes.map((n) => ({ level: levelNumber(k), hitAtMs: n.hitAtMs, id: n.id, durationMs: n.type === 'mash' ? n.durationMs : undefined })));
+    const lowerTimes = lower.map((n) => n.hitAtMs).sort((a, b) => a - b);
+    // 下位譜面のフレーズ内を対象とし、空のイントロ・アウトロを勝手に埋めない。
+    const first = lowerTimes[0]!;
+    const last = Math.max(...lower.map(noteEndMs));
+    const analysis = { ...sourceAnalysis, leadInEndMs: Math.max(sourceAnalysis.leadInEndMs, first), tailStartMs: Math.min(sourceAnalysis.tailStartMs, last + 1) };
+    const r = generateLevelDetailed(level, { analysis, choruses: doc.choruses, durationMs: durationOf(doc), settings: { [level]: { ...doc.levelSettings[key], minGapMs: Math.max(81, doc.levelSettings[key].minGapMs) } }, existing: { [level]: next.levels[key].notes }, manualPolicy: 'keep', usedTimes, crossLevelExclusionMs: CROSS_LEVEL_EXCLUSION_MS });
+    next = updateLevel(next, key, r.notes);
+    reports.push(r);
+    if (r.generatedCount === 0) shortfalls.push(`Lv${key}の追加候補はありません。下位譜面の間隔や密度設定を確認してください。`);
   }
   return { doc: next, reports, shortfalls };
 }
@@ -342,7 +389,7 @@ export function findNoteIssues(doc: EditorDocument): NoteIssue[] {
   const dur = durationOf(doc);
   for (const k of LEVEL_KEYS) {
     const notes = sortNotes(doc.levels[k].notes);
-    const minGap = doc.levelSettings[k].minGapMs;
+    const minGap = Math.max(doc.noteMode === 'additive' ? 81 : 1, doc.levelSettings[k].minGapMs);
     const ids = new Set<string>();
     for (let i = 0; i < notes.length; i++) {
       const n = notes[i]!;
@@ -359,6 +406,10 @@ export function findNoteIssues(doc: EditorDocument): NoteIssue[] {
         else if (gap < minGap) issues.push({ level: k, id: n.id, hitAtMs: n.hitAtMs, code: 'min-gap', message: `L${k} ${formatTimecode(noteEndMs(prev))}→${formatTimecode(n.hitAtMs)} の間隔 ${gap}ms が最小間隔 ${minGap}ms 未満です` });
       }
     }
+  }
+  if (doc.noteMode === 'additive') {
+    const report = findCrossLevelConflicts({ ...doc.levels, '4': { notes: [] } }, CROSS_LEVEL_EXCLUSION_MS);
+    for (const p of report.pairs) issues.push({ level: String(p.levelB) as LevelKey, id: p.noteB.id, hitAtMs: p.noteB.hitAtMs, code: 'cross-level', pairKey: `${p.levelA}-${p.levelB}`, message: `統合後の間隔不足: Lv${p.levelA} と Lv${p.levelB} の打点間隔が ${p.diffMs}ms（80ms以内）です。` });
   }
   return issues;
 }

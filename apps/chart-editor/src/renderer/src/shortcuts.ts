@@ -102,9 +102,9 @@ export function handleKeyDown(e: KeyboardEvent): void {
     case 'ArrowUp':
     case 'ArrowDown': {
       e.preventDefault();
-      const levels = ['1', '2', '3', '4'] as const;
-      const cur = levels.indexOf(editorStore.getState().view.activeLevel);
-      const next = levels[Math.max(0, Math.min(3, cur + (e.key === 'ArrowDown' ? 1 : -1)))]!;
+      const levels = ['1', '2', '3'] as const;
+      const cur = levels.findIndex((k) => k === editorStore.getState().view.activeLevel);
+      const next = levels[Math.max(0, Math.min(2, cur + (e.key === 'ArrowDown' ? 1 : -1)))]!;
       editorStore.setView({ activeLevel: next });
       return;
     }
