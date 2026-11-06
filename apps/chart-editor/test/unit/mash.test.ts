@@ -9,7 +9,7 @@ import { audioMeta, syntheticAnalysis } from './document.test';
 const base = cmd.documentWithAudio(cmd.createEmptyDocument(), audioMeta);
 
 describe('連打（mash）の編集', () => {
-  it('F 長押し相当の addMash は区間を持つ連打を追加し、短すぎる・重なる・他レベル近接は拒否する', () => {
+  it('F 長押し相当の addMash は区間を持つ連打を追加し、短すぎる・重なる・他レベル近接は許可する', () => {
     const r = cmd.addMash(base, '1', 5000, 6000);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
@@ -19,9 +19,9 @@ describe('連打（mash）の編集', () => {
     expect(cmd.addMash(base, '1', 6000, 5000).ok).toBe(true); // 逆向きも開始・終了に正規化
     // 同一レベルの区間内へ通常ヒットは置けない
     expect(cmd.addNote(r.doc, '1', 5500).ok).toBe(false);
-    // 他レベルは区間全体から 80ms 離れている必要がある
-    expect(cmd.addNote(r.doc, '2', 5500).ok).toBe(false);
-    expect(cmd.addNote(r.doc, '2', 6080).ok).toBe(false);
+    // 他レベルでは連打の区間内・境界付近にも配置できる
+    expect(cmd.addNote(r.doc, '2', 5500).ok).toBe(true);
+    expect(cmd.addNote(r.doc, '2', 6080).ok).toBe(true);
     expect(cmd.addNote(r.doc, '2', 6081).ok).toBe(true);
     expect(cmd.addNote(r.doc, '2', 4919).ok).toBe(true);
     // 長さの変更・種類の切替

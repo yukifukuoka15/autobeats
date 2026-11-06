@@ -1,7 +1,6 @@
 import {
   CHART_FILE_NAME,
   CHART_FORMAT,
-  CROSS_LEVEL_EXCLUSION_MS,
   DEFAULT_LEVEL_SETTINGS,
   LEVEL_PRIORITY,
   LEVEL_KEYS,
@@ -43,13 +42,13 @@ export function documentToChart(doc: EditorDocument, audioFileName: string): Cha
     analysis: { engineVersion: doc.analysis?.engineVersion ?? 'manual', analyzedAt: doc.analysis?.analyzedAt ?? new Date().toISOString() },
     choruses: [...doc.choruses].sort((a, b) => a.startMs - b.startMs).map((c) => ({ ...c })),
     levels,
-    generationRules: { crossLevelExclusionMs: CROSS_LEVEL_EXCLUSION_MS, levelPriority: [...LEVEL_PRIORITY], crossLevelNotesAreExclusive: true },
+    generationRules: { crossLevelExclusionMs: 0, levelPriority: [...LEVEL_PRIORITY], crossLevelNotesAreExclusive: false },
   };
 }
 
-/** エディターの書き出し前検証オプション: 難易度間衝突と最小間隔違反をエラーにする */
+/** エディターの書き出し前検証オプション: 同一レベルの最小間隔違反をエラーにする */
 export function exportValidationOptions(doc: EditorDocument) {
-  return { minGapMsByLevel: minGapMapFromDocument(doc), minGapAsError: true, crossLevelExclusionMs: CROSS_LEVEL_EXCLUSION_MS };
+  return { minGapMsByLevel: minGapMapFromDocument(doc), minGapAsError: true };
 }
 
 export function minGapMapFromDocument(doc: EditorDocument): Record<LevelKey, number> {

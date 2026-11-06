@@ -1,5 +1,5 @@
 import type { AnalysisStage, WaveformPeaks } from '@autobeats/audio-analysis';
-import { CROSS_LEVEL_EXCLUSION_MS, LEVEL_KEYS, findCrossLevelConflicts, formatTimecode, hasOverlappingChoruses, type LevelKey } from '@autobeats/chart-format';
+import { LEVEL_KEYS, formatTimecode, hasOverlappingChoruses, type LevelKey } from '@autobeats/chart-format';
 import type { AudioMeta, AudioOpenResult, MenuAction, ProjectLoadResult, VerifyPackageResult } from '../../shared/types';
 import { AnalysisClient, type AnalysisJobHandle } from './analysis/client';
 import { api } from './api';
@@ -397,12 +397,9 @@ class Controller {
     });
   }
 
-  /** 読み込んだ譜面に難易度間衝突があれば、再生成／修復／読み取り専用／キャンセルを選ばせる */
-  checkConflictsAfterLoad(source: string): boolean {
-    const report = findCrossLevelConflicts(editorStore.doc.levels, CROSS_LEVEL_EXCLUSION_MS);
-    if (report.total === 0) return false;
-    editorStore.setDialog({ kind: 'conflicts', total: report.total, byPair: report.countsByPair, source });
-    return true;
+  /** 異なる難易度の重なりは許可し、読み込み時に変更しない。 */
+  checkConflictsAfterLoad(_source: string): boolean {
+    return false;
   }
 
   /** 書き出し前の全件検証（難易度間衝突・同一レベル重複・最小間隔・範囲外・ID・非整数） */
@@ -649,13 +646,11 @@ class Controller {
   async verifyPackage(): Promise<void> {
     const r = await api.verifyPackageDialog(editorStore.doc.audio ? editorStore.doc : null);
     if (!r) return;
-    const crossTotal = r.ok && r.chart ? findCrossLevelConflicts(r.chart.levels, CROSS_LEVEL_EXCLUSION_MS).total : 0;
     const lines = r.ok
       ? [
           '検証に成功しました。',
           `楽曲ID: ${r.chart?.trackId}  曲名: ${r.chart?.title}  BPM: ${r.chart?.bpm}`,
           ...LEVEL_KEYS.map((k) => `LEVEL ${k}: ${r.chart?.levels[k].notes.length ?? 0} 音`),
-          ...(crossTotal > 0 ? [`警告: 難易度間（${CROSS_LEVEL_EXCLUSION_MS}ms 以内）の衝突が ${crossTotal} 組あります。読み込むと修復方法を選べます。`] : []),
           ...r.warnings.map((w) => `警告: ${w.message}`),
         ]
       : r.errors.map((e) => `・${e.message}`);

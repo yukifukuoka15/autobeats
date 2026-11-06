@@ -1,6 +1,6 @@
 {
   "name": "@autobeats/kosenfes-game",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "description": "高専祭ゲームアプリ（ネオンヒット：固定譜面モード／楽曲譜面モード）",
   "main": "./out/main/index.js",

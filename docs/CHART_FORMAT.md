@@ -64,7 +64,7 @@
 | `notes[].type` | string（任意） | `tap`（既定、1 回押す）または `mash`（連打）。未知の値は通常ヒットとして扱い警告 |
 | `notes[].durationMs` | 整数（`type: "mash"` のとき必須） | 連打区間の長さ。200ms 以上、`hitAtMs + durationMs <= durationMs`。区間内に同一レベルの他のヒットがあればエラー。難易度間除外と最小間隔は区間全体に適用 |
 
-| `generationRules` | object（任意） | エディターが付ける生成ルール。`crossLevelExclusionMs`（既定 80）、`levelPriority`（`[1,2,3,4]`）、`crossLevelNotesAreExclusive`。ゲームは参照しなくてよい |
+| `generationRules` | object（任意） | エディターが付ける生成ルール。`crossLevelExclusionMs`（現在 0）、`levelPriority`（`[1,2,3,4]`）、`crossLevelNotesAreExclusive`（現在 false）。ゲームは参照しなくてよい |
 
 追加フィールドは許可されます（無視されます）。必須項目を変更するときは `formatVersion` を上げ、`SUPPORTED_FORMAT_VERSIONS` と `validateChart` を更新してください。
 
@@ -75,7 +75,7 @@
 サビ区間の範囲外・順序・重なり、レベル欠落、音符IDの重複、`hitAtMs` の範囲外・非整数・同一レベル内重複、音声欠落、
 音声がフォルダ外を参照（`../`、絶対パス、シンボリックリンク）、SHA-256 不一致、音声サイズ超過。
 
-エディターの書き出し前検証では、さらに `crossLevelExclusionMs`（異なるレベル間で |差| ≤ 80ms の音符）と `minGapAsError`（最小間隔違反）をエラーとして扱います。ゲームの取り込み検証ではこれらを有効にしていません。
+エディターの書き出し前検証では、`minGapAsError`（同一レベルの最小間隔違反）をエラーとして扱います。異なる難易度間の同時刻・80ms以内の近接・連打区間の重なりは許可し、生成・編集・読み込み・書き出しで制限しません。
 
 警告（読み込み可、表示のみ）:
 レベルごとの最小間隔違反、`hitAtMs < 3000` の音符（ゲーム開始時にレーン途中へ出現）、音符のないレベル、未知の `type`。

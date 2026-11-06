@@ -82,12 +82,11 @@ test('音符の追加・ドラッグ移動・複数選択・削除・Undo・Redo
     await page.keyboard.press('j');
     expect((await noteCounts(page))[1]).toBe(1);
     await expect(page.getByTestId('input-hit-at')).toHaveValue('12000');
-    // 他レベルの音符と衝突する位置へのダブルクリックは最寄りの空き位置へ追加される
+    // 他レベルの音符と同時刻にも追加できる
     await page.mouse.dblclick(box.x + xOf(12000), box.y + Y.l3);
     expect((await noteCounts(page))[2]).toBe(1);
     const l3 = Number(await page.getByTestId('input-hit-at').inputValue());
-    expect(Math.abs(l3 - 12000)).toBeGreaterThan(80);
-    await expect(page.getByTestId('status-text')).toContainText('最寄りの空き位置');
+    expect(l3).toBe(12000);
   } finally {
     await closeEditor(app);
   }

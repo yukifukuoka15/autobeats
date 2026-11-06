@@ -1,4 +1,4 @@
-import { CROSS_LEVEL_EXCLUSION_MS, MASH, formatTimecode, type LevelKey } from '@autobeats/chart-format';
+import { MASH, formatTimecode, type LevelKey } from '@autobeats/chart-format';
 import { useMemo } from 'react';
 import { controller } from '../controller';
 import { findNoteIssues, summarizeIssues, type NoteIssue } from '../store/document';
@@ -67,9 +67,9 @@ function ValidationSection({ issues }: { issues: NoteIssue[] }) {
         <p className="hint ok" data-testid="issues-none">
           検証OK
           <br />
-          同一レベル内の衝突、難易度間の{CROSS_LEVEL_EXCLUSION_MS}ms以内の衝突、
+          難易度間の同時刻・近接配置は許可されます。
           <br />
-          範囲外、最小間隔違反はありません。
+          同一レベル内の衝突、範囲外、最小間隔違反はありません。
         </p>
       ) : (
         <div data-testid="issues-summary">

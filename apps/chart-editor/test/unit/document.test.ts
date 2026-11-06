@@ -123,9 +123,9 @@ describe('document commands', () => {
     const issues = cmd.findNoteIssues(raw);
     expect(issues.some((i) => i.code === 'collision')).toBe(true);
     expect(issues.some((i) => i.code === 'min-gap')).toBe(true);
-    expect(issues.filter((i) => i.code === 'cross-level')).toHaveLength(2);
+    expect(issues.filter((i) => i.code === 'cross-level')).toHaveLength(0);
     const summary = cmd.summarizeIssues(issues);
-    expect(summary.crossLevelByPair['1-2']).toBe(2);
+    expect(summary.crossLevelByPair['1-2']).toBe(0);
   });
 });
 

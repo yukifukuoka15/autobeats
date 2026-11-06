@@ -1,13 +1,10 @@
-import { generateAllLevelsDetailed, type AnalysisResult, type LevelGenerationResult, type ManualNotePolicy } from '@autobeats/audio-analysis';
+import { generateLevelDetailed, type AnalysisResult, type LevelGenerationResult, type ManualNotePolicy } from '@autobeats/audio-analysis';
 import {
-  CROSS_LEVEL_EXCLUSION_MS,
   DEFAULT_LEVEL_SETTINGS,
   LEVEL_DISPLAY_NAMES,
   LEVEL_KEYS,
   LEVEL_PRIORITY,
   MASH,
-  findCrossLevelConflicts,
-  findNearestCrossLevelConflict,
   formatTimecode,
   noteEndMs,
   makeChorusId,
@@ -88,7 +85,7 @@ export type PlacementCheck = { ok: true; warnings: string[] } | { ok: false; mes
 /**
  * ヒット配置の共通検証。自動生成以外の全経路（追加・ドラッグ・数値入力・矢印移動・複数移動）がこれを通る。
  * - 整数、0ms 以上、曲の長さ未満
- * - 他レベルのヒットから CROSS_LEVEL_EXCLUSION_MS 以内でない（移動中の自分自身は除外）
+ * - 異なるレベル間の同時刻・近接・連打区間の重なりは許可する
  * - 同一レベル内で同時刻でない
  * - 同一レベルの最小間隔（警告または拒否）
  */
@@ -110,14 +107,6 @@ export function checkPlacement(doc: EditorDocument, level: LevelKey, placements:
     if (end > dur) return { ok: false, message: `連打の終了（${formatTimecode(end)}）が曲の長さ（${formatTimecode(dur)}）を超えます。` };
     if (seen.has(t)) return { ok: false, message: `移動先 ${formatTimecode(t)} に複数のヒットが重なります。` };
     seen.add(t);
-    const conflict = findNearestCrossLevelConflict(t, levelNumber(level), doc.levels, CROSS_LEVEL_EXCLUSION_MS, movingIds, dMs);
-    if (conflict) {
-      return {
-        ok: false,
-        conflict,
-        message: `この位置には${p.id ? '移動' : '追加'}できません。\nLEVEL ${conflict.level}のヒット（${formatTimecode(conflict.hitAtMs)}）から${conflict.diffMs}msしか離れていません。\n難易度間の最小間隔は${CROSS_LEVEL_EXCLUSION_MS}msです。`,
-      };
-    }
     for (const o of others) {
       const oEnd = noteEndMs(o);
       // 区間同士の距離（重なれば 0）
@@ -281,7 +270,7 @@ export interface RegenerateOutcome {
 
 /**
  * 指定レベルを LEVEL 1→4 の優先順で再生成する。
- * 再生成しないレベルのヒット、保持する手作業ヒットは使用済み時刻として除外される。
+ * 各レベルを独立して生成し、保持する同一レベルの手作業ヒットだけを避ける。
  * 1操作としてコミットできるよう新しいドキュメントを返す。
  */
 export function regenerateLevels(doc: EditorDocument, levels: readonly LevelKey[], manualPolicy: ManualNotePolicy): RegenerateOutcome {
@@ -293,10 +282,12 @@ export function regenerateLevels(doc: EditorDocument, levels: readonly LevelKey[
     existing[levelNumber(k)] = doc.levels[k].notes;
     settings[levelNumber(k)] = doc.levelSettings[k];
   }
-  const detailed = generateAllLevelsDetailed(
-    { analysis: doc.analysis, choruses: doc.choruses, durationMs, settings, existing, manualPolicy, crossLevelExclusionMs: CROSS_LEVEL_EXCLUSION_MS },
-    levels.map(levelNumber),
-  );
+  // 各難易度を独立して生成する。他レベルのノーツは除外条件にしない。
+  const detailed: Partial<Record<LevelNumber, LevelGenerationResult>> = {};
+  for (const key of levels) {
+    const level = levelNumber(key);
+    detailed[level] = generateLevelDetailed(level, { analysis: doc.analysis, choruses: doc.choruses, durationMs, settings, existing, manualPolicy });
+  }
   let next = doc;
   const reports: LevelGenerationResult[] = [];
   const shortfalls: string[] = [];
@@ -306,29 +297,10 @@ export function regenerateLevels(doc: EditorDocument, levels: readonly LevelKey[
     next = updateLevel(next, String(l) as LevelKey, r.notes);
     reports.push(r);
     if (r.generatedCount < r.targetCount) {
-      shortfalls.push(`LEVEL ${l}は、難易度間の重複を避けるため目標ヒット数に達しませんでした。\n生成数: ${r.generatedCount} / 目標: ${r.targetCount}`);
+      shortfalls.push(`LEVEL ${l}は、目標ヒット数に達しませんでした。\n生成数: ${r.generatedCount} / 目標: ${r.targetCount}`);
     }
   }
   return { doc: next, reports, shortfalls };
-}
-
-/** 修復に使う候補時刻（拍・半拍・オンセット）を |t - aroundMs| の近い順に返す */
-function replacementCandidates(doc: EditorDocument, aroundMs: number, windowMs: number): number[] {
-  const a = doc.analysis;
-  const set = new Set<number>();
-  if (a) {
-    for (let i = 0; i < a.beats.length; i++) {
-      const b = a.beats[i]!;
-      if (Math.abs(b - aroundMs) <= windowMs) set.add(b);
-      const nb = a.beats[i + 1];
-      if (nb !== undefined) {
-        const half = Math.round((b + nb) / 2);
-        if (Math.abs(half - aroundMs) <= windowMs) set.add(half);
-      }
-    }
-    for (const o of a.onsets) if (Math.abs(o.timeMs - aroundMs) <= windowMs) set.add(o.timeMs);
-  }
-  return [...set].sort((x, y) => Math.abs(x - aroundMs) - Math.abs(y - aroundMs) || x - y);
 }
 
 export interface RepairOutcome {
@@ -338,50 +310,9 @@ export interface RepairOutcome {
   unresolved: number;
 }
 
-/**
- * 難易度間衝突だけを修復する。優先順位 LEVEL 1→2→3→4 で低い番号のレベルを保持し、
- * 高い番号のレベルの衝突ヒットを近くの未使用候補（他レベルから除外幅を超えて離れ、同一レベルの最小間隔も満たす）へ置換する。
- * 候補がなければ削除する。
- */
+/** 旧プロジェクトとの互換用。難易度間の重なりは許可するため変更しない。 */
 export function repairCrossLevelConflicts(doc: EditorDocument): RepairOutcome {
-  let next = doc;
-  let moved = 0;
-  let deleted = 0;
-  const beatMs = next.bpm > 0 ? 60000 / next.bpm : 500;
-  const windowMs = Math.round(Math.max(200, Math.min(1500, beatMs)));
-  for (let pi = 1; pi < LEVEL_PRIORITY.length; pi++) {
-    const level = LEVEL_PRIORITY[pi]!;
-    const key = String(level) as LevelKey;
-    const notes = sortNotes(next.levels[key].notes);
-    const kept: ChartNote[] = [];
-    for (const n of notes) {
-      const conflict = findNearestCrossLevelConflict(n.hitAtMs, level, next.levels, CROSS_LEVEL_EXCLUSION_MS, new Set([n.id]), n.type === 'mash' ? (n.durationMs ?? 0) : 0);
-      if (!conflict) {
-        kept.push(n);
-        continue;
-      }
-      // 置換候補を探す（このレベルの他のヒットとの最小間隔・同時刻も検査）
-      const trial = { ...next, levels: { ...next.levels, [key]: { ...next.levels[key], notes: kept } } };
-      let replaced = false;
-      for (const t of replacementCandidates(next, n.hitAtMs, windowMs)) {
-        if (t === n.hitAtMs) continue;
-        const check = checkPlacement(trial, key, [{ hitAtMs: t, ...(n.type === 'mash' && n.durationMs ? { durationMs: n.durationMs } : {}) }], { rejectMinGap: true });
-        if (check.ok) {
-          // まだ処理していない同レベルの後続ヒットとも最小間隔・同時刻を保つ
-          const later = notes.filter((o) => o.id !== n.id && !kept.includes(o) && Math.abs(o.hitAtMs - t) < next.levelSettings[key].minGapMs);
-          if (later.length > 0) continue;
-          kept.push({ ...n, hitAtMs: t });
-          moved++;
-          replaced = true;
-          break;
-        }
-      }
-      if (!replaced) deleted++;
-    }
-    next = updateLevel(next, key, kept);
-  }
-  const unresolved = findCrossLevelConflicts(next.levels, CROSS_LEVEL_EXCLUSION_MS).total;
-  return { doc: next, moved, deleted, unresolved };
+  return { doc, moved: 0, deleted: 0, unresolved: 0 };
 }
 
 export type NoteIssueCode = 'collision' | 'min-gap' | 'range' | 'cross-level' | 'bad-id' | 'non-integer';
@@ -429,20 +360,6 @@ export function findNoteIssues(doc: EditorDocument): NoteIssue[] {
       }
     }
   }
-  const cross = findCrossLevelConflicts(doc.levels, CROSS_LEVEL_EXCLUSION_MS);
-  for (const p of cross.pairs) {
-    const kb = String(p.levelB) as LevelKey;
-    const ka = String(p.levelA) as LevelKey;
-    issues.push({
-      level: kb,
-      id: p.noteB.id,
-      hitAtMs: p.noteB.hitAtMs,
-      code: 'cross-level',
-      pairKey: `${p.levelA}-${p.levelB}`,
-      other: { level: ka, id: p.noteA.id, hitAtMs: p.noteA.hitAtMs },
-      message: `L${p.levelA} ${formatTimecode(p.noteA.hitAtMs)} と L${p.levelB} ${formatTimecode(p.noteB.hitAtMs)} の間隔 ${p.diffMs}ms（難易度間 ${CROSS_LEVEL_EXCLUSION_MS}ms 以内）`,
-    });
-  }
   return issues;
 }
 
@@ -457,6 +374,6 @@ export function summarizeIssues(issues: readonly NoteIssue[]): IssueSummary {
 }
 
 /** 難易度間衝突の有無（読込時の検出に使う） */
-export function hasCrossLevelConflicts(doc: EditorDocument): boolean {
-  return findCrossLevelConflicts(doc.levels, CROSS_LEVEL_EXCLUSION_MS).total > 0;
+export function hasCrossLevelConflicts(_doc: EditorDocument): boolean {
+  return false;
 }
