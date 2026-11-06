@@ -31,12 +31,23 @@ export function levelNumber(key: LevelKey): LevelNumber {
 
 export const EDITOR_LEVEL_KEYS = ['1', '2', '3'] as const;
 
+export const EASY_LEVEL_SETTINGS = {
+  '1': { density: 0.22, minGapMs: 650, chorusDensityMultiplier: 1.1, beatSnapStrength: 0.95 },
+  '2': { density: 0.4, minGapMs: 340, chorusDensityMultiplier: 1.15, beatSnapStrength: 0.9 },
+  '3': { density: 0.6, minGapMs: 220, chorusDensityMultiplier: 1.2, beatSnapStrength: 0.8 },
+} as const;
+
+export function withEasySettings(doc: EditorDocument): EditorDocument {
+  return { ...doc, noteMode: 'additive', levelSettings: { ...doc.levelSettings, '1': { ...EASY_LEVEL_SETTINGS['1'] }, '2': { ...EASY_LEVEL_SETTINGS['2'] }, '3': { ...EASY_LEVEL_SETTINGS['3'] } } };
+}
+
+
 export function createEmptyDocument(noteMode: EditorDocument['noteMode'] = 'additive'): EditorDocument {
   const levels = {} as EditorDocument['levels'];
   const levelSettings = {} as EditorDocument['levelSettings'];
   for (const k of LEVEL_KEYS) {
     levels[k] = { displayName: LEVEL_DISPLAY_NAMES[levelNumber(k)], notes: [] };
-    levelSettings[k] = { ...DEFAULT_LEVEL_SETTINGS[levelNumber(k)], ...(noteMode === 'additive' && k === '1' ? { minGapMs: 300 } : {}), ...(noteMode === 'additive' && k === '2' ? { density: 0.65 } : {}), ...(noteMode === 'additive' && k === '3' ? { density: 0.9 } : {}) };
+    levelSettings[k] = { ...DEFAULT_LEVEL_SETTINGS[levelNumber(k)], ...(noteMode === 'additive' && k !== '4' ? EASY_LEVEL_SETTINGS[k] : {}) };
   }
   return { noteMode, title: '', artist: '', trackId: 'track', audio: null, analysis: null, bpm: 120, offsetMs: 0, choruses: [], levels, levelSettings };
 }
@@ -287,9 +298,9 @@ export interface RegenerateOutcome {
  * 各レベルを独立して生成し、保持する同一レベルの手作業ヒットだけを避ける。
  * 1操作としてコミットできるよう新しいドキュメントを返す。
  */
-export function regenerateLevels(doc: EditorDocument, levels: readonly LevelKey[], manualPolicy: ManualNotePolicy): RegenerateOutcome {
+export function regenerateLevels(doc: EditorDocument, levels: readonly LevelKey[], manualPolicy: ManualNotePolicy, regenerateBase = false): RegenerateOutcome {
   if (!doc.analysis) return { doc, reports: [], shortfalls: [] };
-  if (doc.noteMode === 'additive') return regenerateAdditions(doc, levels, manualPolicy);
+  if (doc.noteMode === 'additive') return regenerateAdditions(doc, levels, manualPolicy, regenerateBase);
   const durationMs = durationOf(doc) || doc.analysis.durationMs;
   const existing = {} as Record<LevelNumber, readonly ChartNote[]>;
   const settings = {} as Record<LevelNumber, LevelGenerationSettings>;
@@ -319,12 +330,15 @@ export function regenerateLevels(doc: EditorDocument, levels: readonly LevelKey[
 }
 
 /** Lv1は変更せず、Lv2→Lv3の追加分だけを生成する。 */
-function regenerateAdditions(doc: EditorDocument, requested: readonly LevelKey[], manualPolicy: ManualNotePolicy): RegenerateOutcome {
+function regenerateAdditions(doc: EditorDocument, requested: readonly LevelKey[], manualPolicy: ManualNotePolicy, regenerateBase: boolean): RegenerateOutcome {
   const sourceAnalysis = doc.analysis;
   if (!sourceAnalysis) return { doc, reports: [], shortfalls: [] };
-  if (doc.levels['1'].notes.length === 0) {
+  if (regenerateBase) {
+    for (const k of EDITOR_LEVEL_KEYS.filter((k) => k !== '1' && requested.includes(k))) doc = updateLevel(doc, k, manualPolicy === 'keep' ? doc.levels[k].notes.filter((n) => n.source === 'manual') : []);
+  }
+  if (doc.levels['1'].notes.length === 0 || regenerateBase) {
     const usedTimes = EDITOR_LEVEL_KEYS.filter((k) => k !== '1').flatMap((k) => doc.levels[k].notes.map((n) => ({ level: levelNumber(k), hitAtMs: n.hitAtMs, id: n.id, durationMs: n.type === 'mash' ? n.durationMs : undefined })));
-    const base = generateLevelDetailed(1, { analysis: sourceAnalysis, choruses: doc.choruses, durationMs: durationOf(doc), musicalPhrasing: true, settings: { 1: { ...doc.levelSettings['1'], minGapMs: Math.max(81, doc.levelSettings['1'].minGapMs) } }, usedTimes, crossLevelExclusionMs: CROSS_LEVEL_EXCLUSION_MS });
+    const base = generateLevelDetailed(1, { existing: { 1: doc.levels['1'].notes }, manualPolicy, analysis: sourceAnalysis, choruses: doc.choruses, durationMs: durationOf(doc), musicalPhrasing: true, settings: { 1: { ...doc.levelSettings['1'], minGapMs: Math.max(81, doc.levelSettings['1'].minGapMs) } }, usedTimes, crossLevelExclusionMs: CROSS_LEVEL_EXCLUSION_MS });
     doc = updateLevel(doc, '1', base.notes);
     if (base.notes.length === 0) return { doc, reports: [base], shortfalls: ['Lv1の生成候補がありません。音源や解析結果を確認してください。'] };
   }
@@ -342,7 +356,7 @@ function regenerateAdditions(doc: EditorDocument, requested: readonly LevelKey[]
     const first = lowerTimes[0]!;
     const last = Math.max(...lower.map(noteEndMs));
     const analysis = { ...sourceAnalysis, leadInEndMs: Math.max(sourceAnalysis.leadInEndMs, first), tailStartMs: Math.min(sourceAnalysis.tailStartMs, last + 1) };
-    const r = generateLevelDetailed(level, { analysis, cumulativeBase: lower, musicalPhrasing: true, choruses: doc.choruses, durationMs: durationOf(doc), settings: { [level]: { ...doc.levelSettings[key], minGapMs: Math.max(81, doc.levelSettings[key].minGapMs) } }, existing: { [level]: next.levels[key].notes }, manualPolicy: 'keep', usedTimes, crossLevelExclusionMs: CROSS_LEVEL_EXCLUSION_MS });
+    const r = generateLevelDetailed(level, { analysis, cumulativeBase: lower, musicalPhrasing: true, choruses: doc.choruses, durationMs: durationOf(doc), settings: { [level]: { ...doc.levelSettings[key], minGapMs: Math.max(81, doc.levelSettings[key].minGapMs) } }, existing: { [level]: next.levels[key].notes }, manualPolicy: 'keep', usedTimes, crossLevelExclusionMs: Math.max(CROSS_LEVEL_EXCLUSION_MS, doc.levelSettings[key].minGapMs - 1) });
     next = updateLevel(next, key, r.notes);
     reports.push(r);
     if (r.generatedCount === 0) shortfalls.push(`Lv${key}の追加候補はありません。下位譜面の間隔や密度設定を確認してください。`);
@@ -389,7 +403,7 @@ export function findNoteIssues(doc: EditorDocument): NoteIssue[] {
   const dur = durationOf(doc);
   for (const k of LEVEL_KEYS) {
     const notes = sortNotes(doc.levels[k].notes);
-    const minGap = Math.max(doc.noteMode === 'additive' ? 81 : 1, doc.levelSettings[k].minGapMs);
+    const minGap = doc.noteMode === 'additive' ? 81 : doc.levelSettings[k].minGapMs;
     const ids = new Set<string>();
     for (let i = 0; i < notes.length; i++) {
       const n = notes[i]!;

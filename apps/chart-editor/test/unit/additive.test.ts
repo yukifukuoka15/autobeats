@@ -83,3 +83,19 @@ describe('Lv1を土台にする追加譜面', () => {
     if (!result.ok) expect(result.errors.some((e) => e.code === 'cross-level')).toBe(true);
   });
 });
+
+it('やさしく作り直す指定時だけ既存Lv1の自動生成分を減らし、手作業は保持する', () => {
+  const doc = base();
+  doc.levels['1'].notes = Array.from({ length: 100 }, (_, i) => ({ id: `dense-${i}`, hitAtMs: 1000 + i * 500, source: 'generated' as const }));
+  doc.levels['1'].notes.push(note('hand', 52000));
+  doc.levels['2'].notes = [note('hand2', 53200)];
+  const easier = cmd.withEasySettings(doc);
+  const kept = cmd.regenerateLevels(easier, ['2', '3'], 'keep');
+  expect(kept.doc.levels['1']).toBe(doc.levels['1']);
+  const changed = cmd.regenerateLevels(easier, ['2', '3'], 'keep', true).doc;
+  expect(changed.levels['1'].notes.length).toBeLessThan(doc.levels['1'].notes.length);
+  expect(changed.levels['1'].notes.some(n => n.id === 'hand' && n.hitAtMs === 52000)).toBe(true);
+  expect(changed.levels['2'].notes.some(n => n.id === 'hand2')).toBe(true);
+  expect(changed.levels['4'].notes).toHaveLength(0);
+  expect(cmd.findNoteIssues(changed)).toEqual([]);
+});

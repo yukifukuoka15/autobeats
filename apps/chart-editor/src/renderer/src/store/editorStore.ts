@@ -34,7 +34,7 @@ export interface PlaybackPrefs {
 
 export type DialogState =
   | { kind: 'none' }
-  | { kind: 'regenerate'; reason: 'chorus' | 'analysis' | 'settings' }
+  | { kind: 'regenerate'; reason: 'chorus' | 'analysis' | 'settings'; easy?: boolean }
   | { kind: 'overlap' }
   | { kind: 'export-exists'; requestId: string; displayPath: string }
   | { kind: 'export-result'; ok: boolean; title: string; lines: string[] }
@@ -293,8 +293,8 @@ class EditorStore {
     return outcome?.shortfalls ?? [];
   }
   /** 再生成（LEVEL 1→4 の優先順）。目標数に届かなかったレベルの警告を返す */
-  regenerate(levels: readonly LevelKey[], policy: ManualNotePolicy): string[] {
-    const outcome = cmd.regenerateLevels(this.doc, levels, policy);
+  regenerate(levels: readonly LevelKey[], policy: ManualNotePolicy, options: { easy?: boolean; regenerateBase?: boolean } = {}): string[] {
+    const outcome = cmd.regenerateLevels(options.easy ? cmd.withEasySettings(this.doc) : this.doc, levels, policy, options.regenerateBase);
     this.commitDoc(outcome.doc, levels.length === 4 ? '4難易度を再生成' : `LEVEL ${levels.join(',')} を再生成`);
     this.set({ selection: null, readOnly: false });
     return outcome.shortfalls;

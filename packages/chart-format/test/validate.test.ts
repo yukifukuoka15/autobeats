@@ -160,3 +160,14 @@ describe('validateChart', () => {
     expect(r.ok).toBe(true);
   });
 });
+
+it('Lv4が空でも検証に成功し、使わないLv4の空欄警告を出さない', () => {
+  const chart = sampleChart();
+  chart.levels['4'].notes = [];
+  const r = validateChart(chart);
+  expect(r.ok).toBe(true);
+  expect(r.warnings.some(w => w.code === 'level-empty' && w.path === 'levels.4')).toBe(false);
+  chart.levels['2'].notes = [];
+  const other = validateChart(chart);
+  expect(other.warnings.some(w => w.code === 'level-empty' && w.path === 'levels.2')).toBe(true);
+});

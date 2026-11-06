@@ -69,3 +69,23 @@ describe('exportGamePackage', () => {
     expect(documentToChart(doc, 'audio.wav').levels['1'].notes.length).toBe(chart.levels['1'].notes.length);
   });
 });
+
+it('Lv4が空でもゲーム用フォルダの書き出しと音声ハッシュ再検証が成功する', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'export-no-lv4-'));
+  try {
+    const audio = path.resolve(__dirname, '../../../../fixtures/generated/song.wav');
+    const { sha256File } = await import('@autobeats/chart-format/node');
+    let doc = cmd.documentWithAudio(cmd.createEmptyDocument(), { token: 't', fileName: 'song.wav', extension: '.wav', sizeBytes: 0, mtimeMs: 0, sha256: await sha256File(audio), displayPath: audio, durationMs: 60000, sampleRate: 22050, channels: 1 });
+    doc = { ...doc, title: 'no-lv4', trackId: 'no-lv4' };
+    doc.levels['1'].notes = [{ id: 'a', hitAtMs: 4000, source: 'manual' }];
+    doc.levels['2'].notes = [{ id: 'b', hitAtMs: 4500, source: 'manual' }];
+    doc.levels['3'].notes = [{ id: 'c', hitAtMs: 4800, source: 'manual' }];
+    const r = await exportGamePackage(doc, audio, dir, 'ask');
+    expect(r.status).toBe('ok');
+    if(r.status !== 'ok') return;
+    expect(r.warnings.some(w => w.code === 'level-empty')).toBe(false);
+    const verified = await verifyChartPackage(r.dir, nodePackageFs);
+    expect(verified.ok).toBe(true);
+    if(verified.ok) expect(verified.pkg.chart.levels['4'].notes).toEqual([]);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});

@@ -375,8 +375,8 @@ class Controller {
   }
 
   /** 再生成を実行し、目標数に届かなかったレベルを警告する */
-  regenerate(levels: readonly LevelKey[], policy: ManualNotePolicy): void {
-    const shortfalls = editorStore.regenerate(levels, policy);
+  regenerate(levels: readonly LevelKey[], policy: ManualNotePolicy, options: { easy?: boolean; regenerateBase?: boolean } = {}): void {
+    const shortfalls = editorStore.regenerate(levels, policy, options);
     this.reportShortfalls(shortfalls);
   }
 
@@ -626,7 +626,7 @@ class Controller {
       kind: 'export-result',
       ok: true,
       title: '書き出しと再検証が完了しました',
-      lines: [`フォルダ: ${r.displayPath}`, 'chart.json と音声のハッシュ・スキーマ・全時刻・全レベルを再検証しました。', ...(r.warnings.length > 0 ? ['警告:', ...r.warnings.map((w) => `・${w.message}`)] : [])],
+      lines: [`フォルダ: ${r.displayPath}`, 'ゲーム用フォルダの書き出しに成功しました。chart.json と音声を再検証済みです。Lv4が空でもそのまま利用できます。', ...(r.warnings.length > 0 ? ['警告:', ...r.warnings.map((w) => `・${w.message}`)] : [])],
     });
     editorStore.setStatus({ kind: 'info', text: `書き出し完了: ${r.displayPath}` });
   }

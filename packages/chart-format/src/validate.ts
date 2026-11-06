@@ -149,7 +149,7 @@ export function validateChart(input: unknown, options: ValidateChartOptions = {}
     if (early > 0) {
       warnings.push({ code: 'note-early', message: `LEVEL ${key} に ${JUDGE.approachMs}ms より前のヒットが ${early} 個あります。ゲームでは開始時にレーン途中へ出現します。`, path: `levels.${key}` });
     }
-    if (notes.length === 0) {
+    if (notes.length === 0 && key !== '4') {
       warnings.push({ code: 'level-empty', message: `LEVEL ${key} にヒットがありません。`, path: `levels.${key}` });
     }
     levels[key] = { displayName: level.displayName, notes };

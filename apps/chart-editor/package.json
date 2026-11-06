@@ -1,6 +1,6 @@
 {
   "name": "@autobeats/chart-editor",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "private": true,
   "description": "AutoBeats 譜面エディター（オフライン楽曲解析・4難易度譜面編集）",
   "main": "./out/main/index.js",

@@ -4,8 +4,8 @@ import { editorStore, useDocument, useEditorState } from '../store/editorStore';
 
 export function Dialogs() {
   const doc = useDocument();
-  const additive = doc.noteMode === 'additive';
   const dialog = useEditorState((s) => s.dialog);
+  const additive = doc.noteMode === 'additive' || (dialog.kind === 'regenerate' && dialog.easy);
   const view = useEditorState((s) => s.view);
   if (dialog.kind === 'none') return null;
   const close = () => editorStore.setDialog({ kind: 'none' });
@@ -14,7 +14,7 @@ export function Dialogs() {
       <div className="modal" role="dialog">
         {dialog.kind === 'regenerate' && (
           <>
-            <h2>譜面を再生成しますか？</h2>
+            <h2>{dialog.easy ? 'やさしい追加譜面に作り直しますか？' : '譜面を再生成しますか？'}</h2>
             <p>
               {dialog.reason === 'chorus' ? 'サビ区間が変更されました。' : dialog.reason === 'analysis' ? '解析結果を適用しました。' : '設定に基づいて'}
               再生成は 1 回の操作として Undo できます。
@@ -22,11 +22,12 @@ export function Dialogs() {
             <label className="inline">
               <input type="checkbox" id="keep-manual" defaultChecked /> 手作業で追加・移動したヒット（連打を含む）を残す（オフにすると置き換えます）
             </label>
+            {additive && <label className="inline"><input id="regen-base" type="checkbox" defaultChecked={!!dialog.easy} /> Lv1の自動生成分も作り直す（手作業ヒットの保持設定に従う）</label>}
             <div className="actions">
-              <button data-testid="regen-all" className="accent" onClick={() => { close(); controller.regenerate(additive ? ['2', '3'] : ['1', '2', '3'], keepManual() ? 'keep' : 'replace'); }}>
-                {additive ? '追加分を生成（空のLv1は自動作成）' : '3難易度を再生成'}
+              <button data-testid="regen-all" className="accent" onClick={() => { close(); controller.regenerate(additive ? ['2', '3'] : ['1', '2', '3'], keepManual() ? 'keep' : 'replace', { easy: dialog.easy, regenerateBase: (document.getElementById('regen-base') as HTMLInputElement | null)?.checked ?? false }); }}>
+                {dialog.easy ? 'やさしく作り直す' : additive ? '追加分を生成（空のLv1は自動作成）' : '3難易度を再生成'}
               </button>
-              <button data-testid="regen-active" disabled={additive && view.activeLevel === '1' && doc.levels['1'].notes.length > 0} onClick={() => { close(); controller.regenerate([view.activeLevel], keepManual() ? 'keep' : 'replace'); }}>
+              <button data-testid="regen-active" disabled={additive && view.activeLevel === '1' && doc.levels['1'].notes.length > 0} onClick={() => { close(); controller.regenerate([view.activeLevel], keepManual() ? 'keep' : 'replace', { easy: dialog.easy, regenerateBase: (document.getElementById('regen-base') as HTMLInputElement | null)?.checked ?? false }); }}>
                 選択レベル（L{view.activeLevel}）だけ再生成
               </button>
               <button data-testid="regen-keep" onClick={close}>

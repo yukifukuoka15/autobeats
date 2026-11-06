@@ -43,3 +43,24 @@ test('空のLv1を作成し、追加分生成・Lv1保護・モードの保存�
     if (process.env.ADDITIVE_SCREENSHOT) await page.screenshot({ path: process.env.ADDITIVE_SCREENSHOT });
   } finally { await closeEditor(app); }
 });
+
+test('独立譜面からやさしく作り直し、Lv4が空でもゲーム用に書き出せる', async () => {
+  const { app, page } = await launchEditor();
+  const dir = mkdtempSync(path.join(tmpdir(), 'autobeats-easy-'));
+  try {
+    await loadAudio(app, page, path.join(FIXTURES, 'song.wav'));
+    await waitForWaveform(page);
+    await analyze(page);
+    await page.getByTestId('additive-mode').uncheck();
+    await page.getByTestId('generate-easy').click();
+    await expect(page.locator('#regen-base')).toBeChecked();
+    await expect(page.locator('#keep-manual')).toBeChecked();
+    await page.getByTestId('regen-all').click();
+    await expect(page.getByTestId('additive-mode')).toBeChecked();
+    await stubOpenDialog(app, dir);
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.webContents.send('menu:action', 'export'));
+    await expect(page.getByTestId('dialog-export-result')).toContainText('書き出しに成功しました');
+    await expect(page.getByTestId('dialog-export-result')).not.toContainText('LEVEL 4 にヒットがありません');
+    if (process.env.EASY_SCREENSHOT) await page.screenshot({ path: process.env.EASY_SCREENSHOT });
+  } finally { await closeEditor(app); }
+});

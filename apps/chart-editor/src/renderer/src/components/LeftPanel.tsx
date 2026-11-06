@@ -98,6 +98,8 @@ export function LeftPanel() {
       </section>
       <section>
         <h3>追加譜面の作成</h3>
+        <button data-testid="generate-easy" disabled={!doc.analysis} onClick={() => editorStore.setDialog({ kind: 'regenerate', reason: 'settings', easy: true })}>やさしく作り直す…</button>
+        <p className="hint">密度を下げて追加分方式へ切り替えます。確認画面でLv1の自動生成分も作り直せます。</p>
         <label className="inline"><input type="checkbox" data-testid="additive-mode" checked={doc.noteMode === 'additive'} onChange={(e) => editorStore.commitDoc({ ...doc, noteMode: e.target.checked ? 'additive' : 'independent' }, '譜面作成方式を変更')} /> Lv1を土台に追加分だけ作成</label>
         <p className="hint">Lv1は基本譜面です。空なら自動生成し、既存のLv1は保持します。Lv2はLv1への追加分、Lv3はLv1＋Lv2への追加分だけを保存します。統合は別アプリで行ってください。統合後の打点は80msより離します。</p>
         <button data-testid="generate-additions" disabled={!doc.analysis || doc.noteMode !== 'additive'} onClick={() => editorStore.setDialog({ kind: 'regenerate', reason: 'settings' })}>Lv1からLv2・Lv3の追加分を生成…</button>

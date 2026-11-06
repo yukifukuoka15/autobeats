@@ -54,7 +54,7 @@ export function exportValidationOptions(doc: EditorDocument) {
 
 export function minGapMapFromDocument(doc: EditorDocument): Record<LevelKey, number> {
   const out = {} as Record<LevelKey, number>;
-  for (const k of LEVEL_KEYS) out[k] = Math.max(doc.noteMode === 'additive' ? 81 : 1, doc.levelSettings[k]?.minGapMs ?? DEFAULT_LEVEL_SETTINGS[Number(k) as 1 | 2 | 3 | 4].minGapMs);
+  for (const k of LEVEL_KEYS) out[k] = doc.noteMode === 'additive' ? 81 : (doc.levelSettings[k]?.minGapMs ?? DEFAULT_LEVEL_SETTINGS[Number(k) as 1 | 2 | 3 | 4].minGapMs);
   return out;
 }
 
