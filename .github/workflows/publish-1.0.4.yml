@@ -1,0 +1,155 @@
+name: Import and publish AutoBeats 1.0.4
+on:
+  push:
+    paths: ['.github/workflows/publish-1.0.4.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply verified integrated sources
+        env:
+          TARGET_REPOSITORY: ${{ github.repository }}
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, zipfile, hashlib
+          root = pathlib.Path.cwd()
+          archive_path = root / 'autobeats-update-1.0.4.zip'
+          assert hashlib.sha256(archive_path.read_bytes()).hexdigest() == 'd0e40ef7248ab5648dd94912a32a06e06845196372756ec9d514b293bcfb3005'
+          with zipfile.ZipFile(archive_path) as archive:
+              for item in archive.infolist():
+                  parts = pathlib.PurePosixPath(item.filename).parts[1:]
+                  if not parts or parts[0] in ('.github', 'tools') or any(p in ('out', 'release', 'node_modules', '__pycache__') for p in parts):
+                      continue
+                  target = root.joinpath(*parts).resolve()
+                  if not target.is_relative_to(root):
+                      raise ValueError('Invalid archive path')
+                  target.parent.mkdir(parents=True, exist_ok=True)
+                  target.write_bytes(archive.read(item))
+                  if item.filename.endswith('.command'):
+                      target.chmod(0o755)
+          PY
+      - name: Commit sources and tag
+        id: source
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A -- . ':!tools'
+          git diff --cached --quiet || git commit -m 'Publish integrated AutoBeats 1.0.4 sources'
+          git push origin HEAD:main
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          if ! git ls-remote --exit-code --tags origin refs/tags/v1.0.4 >/dev/null; then
+            git tag v1.0.4
+            git push origin refs/tags/v1.0.4
+          fi
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      - run: npm run fixtures
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npx vitest run
+  build:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            script: release:mac
+          - os: macos-15-intel
+            script: release:mac
+          - os: windows-latest
+            script: package:win
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: npm ci
+      - run: npm run ${{ matrix.script }}
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.os }}
+          compression-level: 0
+          path: |
+            apps/*/release/*.dmg
+            apps/*/release/*.zip
+            apps/*/release/*.exe
+          if-no-files-found: error
+  release:
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: Add source archive and checksums
+        run: |
+          python3 - <<'PY'
+          import pathlib, shutil, hashlib
+          out = pathlib.Path('dist/extra')
+          out.mkdir(parents=True, exist_ok=True)
+          shutil.copy2('README-MAC.txt', out)
+          lines = []
+          for p in sorted(pathlib.Path('dist').rglob('*')):
+              if p.is_file() and p.suffix in ('.dmg', '.zip', '.exe'):
+                  with p.open('rb') as f:
+                      digest = hashlib.file_digest(f, 'sha256').hexdigest()
+                  name = p.name.replace(' ', '.')
+                  if name != p.name:
+                      p.rename(p.with_name(name))
+                  lines.append(f'{digest}  {name}')
+          (out / 'SHA256SUMS-v1.0.4.txt').write_text('\n'.join(lines) + '\n')
+          PY
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.4
+          target_commitish: ${{ needs.prepare.outputs.sha }}
+          name: v1.0.4 — 見本動画を参考に自動生成を改善
+          body: |
+            見本動画と打音なし音源を比較し、自動生成を改善しました。
+
+            - 一定テンポが十分安定している場合だけ拍グリッドの揺れを補正
+            - 静かなイントロ・区間の不要な打点を抑制
+            - Lv1は小節頭・強拍を優先し、サビでも過密にしない
+            - Lv2/Lv3は下位レベルを含む総数で密度を制限
+            - 追加分だけの保存、80ms制限、既存Lv1の保持を継続
+            - 解析エンジン1.1.0で旧キャッシュを区別
+
+            参考曲での推定打点一致F1: Lv1 0.636→0.713 / Lv2統合 0.639→0.722 / Lv3統合 0.596→0.747。
+            1曲の動画から推定した比較で、公式譜面の正解率や未使用曲での精度を示すものではありません。
+            比較方法・制約: docs/GENERATION_BENCHMARK.md
+
+            既存プロジェクトはAI自動解析をやり直してからLv2/Lv3の追加分を再生成してください。既存Lv1は変更しません。
+            Windows: win-x64-setup.exe または portable.exe
+            Mac M1以降: mac-arm64.dmg / Intel Mac: mac-x64.dmg
+            譜面編集はAutoBeats.Chart.Editorを選択してください。
+            Mac実機での手動操作確認は未実施、署名・公証は未設定です。
+          files: |
+            dist/**/*.dmg
+            dist/**/*.zip
+            dist/**/*.exe
+            dist/extra/*.txt
+          fail_on_unmatched_files: true
